@@ -6,7 +6,7 @@ export const newsService = {
     async fetchNews() {
         try {
             const { data, error } = await supabase
-                .from('news')
+                .from('infoapp_news')
                 .select('*')
                 .eq('is_active', true)
                 .order('created_at', { ascending: false });
@@ -22,7 +22,7 @@ export const newsService = {
     async addNews(newsData) {
         try {
             const { data, error } = await supabase
-                .from('news')
+                .from('infoapp_news')
                 .insert([{
                     title: newsData.title,
                     content: newsData.content,
@@ -104,7 +104,7 @@ export const newsService = {
     async searchNews(query) {
         try {
             const { data, error } = await supabase
-                .from('news')
+                .from('infoapp_news')
                 .select('*')
                 .eq('is_active', true)
                 .or(`title.ilike.%${query}%,content.ilike.%${query}%`)
@@ -121,7 +121,7 @@ export const newsService = {
     async getNewsByCategory(category) {
         try {
             const { data, error } = await supabase
-                .from('news')
+                .from('infoapp_news')
                 .select('*')
                 .eq('is_active', true)
                 .eq('category', category)

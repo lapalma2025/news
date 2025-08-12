@@ -539,7 +539,7 @@
 				const statusEl = document.getElementById("connectionStatus");
 				try {
 					const { data, error } = await supabaseClient
-						.from("news")
+						.from("infoapp_news")
 						.select("id")
 						.limit(1);
 					if (error) throw error;
@@ -560,11 +560,11 @@
 					const [newsResult, politiciansResult, postsResult] =
 						await Promise.all([
 							supabaseClient
-								.from("news")
+								.from("infoapp_news")
 								.select("id, likes_count, comments_count")
 								.eq("is_active", true),
 							supabaseClient
-								.from("politicians")
+								.from("infoapp_politicians")
 								.select("id")
 								.eq("is_active", true),
 							supabaseClient
@@ -604,7 +604,7 @@
 			async function loadPoliticians() {
 				try {
 					const { data, error } = await supabaseClient
-						.from("politicians")
+						.from("infoapp_politicians")
 						.select("*")
 						.eq("is_active", true)
 						.order("name");
@@ -632,7 +632,7 @@
 				try {
 					const [newsResult, postsResult] = await Promise.all([
 						supabaseClient
-							.from("news")
+							.from("infoapp_news")
 							.select("*")
 							.eq("is_active", true)
 							.order("created_at", { ascending: false })
@@ -742,7 +742,7 @@
 						};
 
 						const { data, error } = await supabaseClient
-							.from("news")
+							.from("infoapp_news")
 							.insert([newsData])
 							.select();
 
@@ -789,7 +789,7 @@
 						};
 
 						const { data, error } = await supabaseClient
-							.from("politicians")
+							.from("infoapp_politicians")
 							.insert([politicianData])
 							.select();
 

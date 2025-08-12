@@ -6,7 +6,7 @@ export const commentService = {
     async fetchComments(postId, postType) {
         try {
             const { data, error } = await supabase
-                .from('comments')
+                .from('infoapp_comments')
                 .select('*')
                 .eq('post_id', postId)
                 .eq('post_type', postType)
@@ -24,7 +24,7 @@ export const commentService = {
     async addComment(commentData) {
         try {
             const { data, error } = await supabase
-                .from('comments')
+                .from('infoapp_comments')
                 .insert([{
                     post_id: commentData.post_id,
                     post_type: commentData.post_type,
@@ -46,7 +46,7 @@ export const commentService = {
     async deleteComment(commentId) {
         try {
             const { data, error } = await supabase
-                .from('comments')
+                .from('infoapp_comments')
                 .update({ is_active: false })
                 .eq('id', commentId)
                 .select();

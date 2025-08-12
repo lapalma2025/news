@@ -4,7 +4,7 @@ export const politicianService = {
     async fetchPoliticians() {
         try {
             const { data, error } = await supabase
-                .from('politicians')
+                .from('infoapp_politicians')
                 .select('*')
                 .eq('is_active', true)
                 .order('created_at', { ascending: false });
@@ -19,7 +19,7 @@ export const politicianService = {
     async fetchPoliticianPosts() {
         try {
             const { data, error } = await supabase
-                .from('politician_posts')
+                .from('infoapp_politician_posts')
                 .select(`
           *,
           politicians (
@@ -50,7 +50,7 @@ export const politicianService = {
     async addPolitician(politicianData) {
         try {
             const { data, error } = await supabase
-                .from('politicians')
+                .from('infoapp_politicians')
                 .insert([{
                     name: politicianData.name,
                     party: politicianData.party,
@@ -70,7 +70,7 @@ export const politicianService = {
     async addPoliticianPost(postData) {
         try {
             const { data, error } = await supabase
-                .from('politician_posts')
+                .from('infoapp_politician_posts')
                 .insert([{
                     politician_id: postData.politician_id,
                     title: postData.title,
@@ -93,7 +93,7 @@ export const politicianService = {
     async getPoliticianPosts(politicianId) {
         try {
             const { data, error } = await supabase
-                .from('politician_posts')
+                .from('infoapp_politician_posts')
                 .select(`
           *,
           politicians (
@@ -181,7 +181,7 @@ export const politicianService = {
     async searchPoliticianPosts(query) {
         try {
             const { data, error } = await supabase
-                .from('politician_posts')
+                .from('infoapp_politician_posts')
                 .select(`
           *,
           politicians (
@@ -212,7 +212,7 @@ export const politicianService = {
     async getPoliticianStats(politicianId) {
         try {
             const { data, error } = await supabase
-                .from('politician_posts')
+                .from('infoapp_politician_posts')
                 .select('likes_count, comments_count')
                 .eq('politician_id', politicianId)
                 .eq('is_active', true);
