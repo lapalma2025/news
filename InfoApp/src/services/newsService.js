@@ -1,4 +1,4 @@
-// src/services/newsService.js
+// src/services/newsService.js - Naprawiony z prefiksami tabel
 import { supabase, handleSupabaseError, handleSupabaseSuccess, getCurrentTimestamp } from './supabaseClient';
 
 export const newsService = {
@@ -6,7 +6,7 @@ export const newsService = {
     async fetchNews() {
         try {
             const { data, error } = await supabase
-                .from('infoapp_news')
+                .from('infoapp_news')  // ← ZMIENIONE
                 .select('*')
                 .eq('is_active', true)
                 .order('created_at', { ascending: false });
@@ -22,7 +22,7 @@ export const newsService = {
     async addNews(newsData) {
         try {
             const { data, error } = await supabase
-                .from('infoapp_news')
+                .from('infoapp_news')  // ← ZMIENIONE
                 .insert([{
                     title: newsData.title,
                     content: newsData.content,
@@ -46,14 +46,18 @@ export const newsService = {
     // Aktualizuj liczbę polubień
     async updateLikesCount(newsId, increment = true) {
         try {
-            const { data, error } = await supabase.rpc('update_likes_count', {
-                table_name: 'news',
-                post_id: newsId,
-                increment_value: increment ? 1 : -1
-            });
+            const { data, error } = await supabase
+                .from('infoapp_news')  // ← ZMIENIONE
+                .update({
+                    likes_count: increment
+                        ? supabase.raw('likes_count + 1')
+                        : supabase.raw('likes_count - 1')
+                })
+                .eq('id', newsId)
+                .select();
 
             if (error) throw error;
-            return handleSupabaseSuccess(data, 'updateLikesCount');
+            return handleSupabaseSuccess(data[0], 'updateLikesCount');
         } catch (error) {
             return handleSupabaseError(error, 'updateLikesCount');
         }
@@ -62,14 +66,18 @@ export const newsService = {
     // Aktualizuj liczbę komentarzy
     async updateCommentsCount(newsId, increment = true) {
         try {
-            const { data, error } = await supabase.rpc('update_comments_count', {
-                table_name: 'news',
-                post_id: newsId,
-                increment_value: increment ? 1 : -1
-            });
+            const { data, error } = await supabase
+                .from('infoapp_news')  // ← ZMIENIONE
+                .update({
+                    comments_count: increment
+                        ? supabase.raw('comments_count + 1')
+                        : supabase.raw('comments_count - 1')
+                })
+                .eq('id', newsId)
+                .select();
 
             if (error) throw error;
-            return handleSupabaseSuccess(data, 'updateCommentsCount');
+            return handleSupabaseSuccess(data[0], 'updateCommentsCount');
         } catch (error) {
             return handleSupabaseError(error, 'updateCommentsCount');
         }
@@ -83,7 +91,7 @@ export const newsService = {
                 {
                     event: '*',
                     schema: 'public',
-                    table: 'news',
+                    table: 'infoapp_news',  // ← ZMIENIONE
                     filter: 'is_active=eq.true'
                 },
                 callback
@@ -104,7 +112,7 @@ export const newsService = {
     async searchNews(query) {
         try {
             const { data, error } = await supabase
-                .from('infoapp_news')
+                .from('infoapp_news')  // ← ZMIENIONE
                 .select('*')
                 .eq('is_active', true)
                 .or(`title.ilike.%${query}%,content.ilike.%${query}%`)
@@ -121,7 +129,7 @@ export const newsService = {
     async getNewsByCategory(category) {
         try {
             const { data, error } = await supabase
-                .from('infoapp_news')
+                .from('infoapp_news')  // ← ZMIENIONE
                 .select('*')
                 .eq('is_active', true)
                 .eq('category', category)
@@ -131,6 +139,63 @@ export const newsService = {
             return handleSupabaseSuccess(data, 'getNewsByCategory');
         } catch (error) {
             return handleSupabaseError(error, 'getNewsByCategory');
+        }
+    },
+
+    // Dodaj/usuń polubienie
+    async toggleLike(newsId, userId, isLiked) {
+        try {
+            if (isLiked) {
+                // Usuń polubienie
+                const { error } = await supabase
+                    .from('infoapp_likes')  // ← ZMIENIONE
+                    .delete()
+                    .eq('post_id', newsId)
+                    .eq('post_type', 'news')
+                    .eq('user_id', userId);
+
+                if (error) throw error;
+
+                // Zmniejsz licznik
+                await this.updateLikesCount(newsId, false);
+            } else {
+                // Dodaj polubienie
+                const { error } = await supabase
+                    .from('infoapp_likes')  // ← ZMIENIONE
+                    .insert([{
+                        post_id: newsId,
+                        post_type: 'news',
+                        user_id: userId,
+                        created_at: getCurrentTimestamp()
+                    }]);
+
+                if (error) throw error;
+
+                // Zwiększ licznik
+                await this.updateLikesCount(newsId, true);
+            }
+
+            return handleSupabaseSuccess(null, 'toggleLike');
+        } catch (error) {
+            return handleSupabaseError(error, 'toggleLike');
+        }
+    },
+
+    // Sprawdź czy użytkownik polubił post
+    async checkIfLiked(newsId, userId) {
+        try {
+            const { data, error } = await supabase
+                .from('infoapp_likes')  // ← ZMIENIONE
+                .select('id')
+                .eq('post_id', newsId)
+                .eq('post_type', 'news')
+                .eq('user_id', userId)
+                .limit(1);
+
+            if (error) throw error;
+            return handleSupabaseSuccess(data.length > 0, 'checkIfLiked');
+        } catch (error) {
+            return handleSupabaseError(error, 'checkIfLiked');
         }
     }
 };

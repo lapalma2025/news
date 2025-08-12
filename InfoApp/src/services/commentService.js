@@ -1,8 +1,6 @@
-// src/services/commentService.js - Serwis komentarzy
 import { supabase, handleSupabaseError, handleSupabaseSuccess, getCurrentTimestamp } from './supabaseClient';
 
 export const commentService = {
-    // Pobierz komentarze dla konkretnego posta
     async fetchComments(postId, postType) {
         try {
             const { data, error } = await supabase
@@ -20,7 +18,6 @@ export const commentService = {
         }
     },
 
-    // Dodaj komentarz
     async addComment(commentData) {
         try {
             const { data, error } = await supabase
@@ -42,7 +39,6 @@ export const commentService = {
         }
     },
 
-    // Usuń komentarz
     async deleteComment(commentId) {
         try {
             const { data, error } = await supabase
@@ -58,7 +54,64 @@ export const commentService = {
         }
     },
 
-    // Subskrypcja komentarzy w czasie rzeczywistym
+    async toggleCommentLike(commentId, userId, isLiked) {
+        try {
+            if (isLiked) {
+                const { error } = await supabase
+                    .from('infoapp_comment_likes')
+                    .delete()
+                    .eq('comment_id', commentId)
+                    .eq('user_id', userId);
+
+                if (error) throw error;
+            } else {
+                const { error } = await supabase
+                    .from('infoapp_comment_likes')
+                    .insert([{
+                        comment_id: commentId,
+                        user_id: userId,
+                        created_at: getCurrentTimestamp()
+                    }]);
+
+                if (error) throw error;
+            }
+
+            return handleSupabaseSuccess(null, 'toggleCommentLike');
+        } catch (error) {
+            return handleSupabaseError(error, 'toggleCommentLike');
+        }
+    },
+
+    async checkCommentLike(commentId, userId) {
+        try {
+            const { data, error } = await supabase
+                .from('infoapp_comment_likes')
+                .select('id')
+                .eq('comment_id', commentId)
+                .eq('user_id', userId)
+                .limit(1);
+
+            if (error) throw error;
+            return handleSupabaseSuccess(data.length > 0, 'checkCommentLike');
+        } catch (error) {
+            return handleSupabaseError(error, 'checkCommentLike');
+        }
+    },
+
+    async getCommentLikesCount(commentId) {
+        try {
+            const { data, error } = await supabase
+                .from('infoapp_comment_likes')
+                .select('id', { count: 'exact' })
+                .eq('comment_id', commentId);
+
+            if (error) throw error;
+            return handleSupabaseSuccess(data.length, 'getCommentLikesCount');
+        } catch (error) {
+            return handleSupabaseError(error, 'getCommentLikesCount');
+        }
+    },
+
     subscribeToComments(postId, postType, callback) {
         const subscription = supabase
             .channel('comments_changes')
@@ -66,7 +119,7 @@ export const commentService = {
                 {
                     event: '*',
                     schema: 'public',
-                    table: 'comments',
+                    table: 'infoapp_comments',
                     filter: `post_id=eq.${postId} AND post_type=eq.${postType} AND is_active=eq.true`
                 },
                 callback
@@ -76,7 +129,6 @@ export const commentService = {
         return subscription;
     },
 
-    // Anuluj subskrypcję
     unsubscribeFromComments(subscription) {
         if (subscription) {
             supabase.removeChannel(subscription);

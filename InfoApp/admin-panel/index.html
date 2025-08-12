@@ -525,16 +525,15 @@
 		</div>
 
 		<script>
-			// Konfiguracja Supabase - ZASTĄP SWOIMI DANYMI
-			const SUPABASE_URL = "https://twoja-instancja.supabase.co";
-			const SUPABASE_ANON_KEY = "twoj-anon-key";
+			const SUPABASE_URL = "https://ggtljdtdlhbdupjuednj.supabase.co";
+			const SUPABASE_ANON_KEY =
+				"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdndGxqZHRkbGhiZHVwanVlZG5qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ5OTUzMjksImV4cCI6MjA3MDU3MTMyOX0.6SXYTZS3P853GCp5-ahD2UTV9N8hzuq5liECMkh3_Sw";
 
 			const supabaseClient = supabase.createClient(
 				SUPABASE_URL,
 				SUPABASE_ANON_KEY
 			);
 
-			// Sprawdzenie połączenia
 			async function checkConnection() {
 				const statusEl = document.getElementById("connectionStatus");
 				try {

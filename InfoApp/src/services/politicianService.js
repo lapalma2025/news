@@ -1,10 +1,12 @@
+// src/services/politicianService.js - Naprawiony z prefiksami tabel
 import { supabase, handleSupabaseError, handleSupabaseSuccess, getCurrentTimestamp } from './supabaseClient';
 
 export const politicianService = {
+    // Pobierz wszystkich aktywnych polityków
     async fetchPoliticians() {
         try {
             const { data, error } = await supabase
-                .from('infoapp_politicians')
+                .from('infoapp_politicians')  // ← ZMIENIONE
                 .select('*')
                 .eq('is_active', true)
                 .order('created_at', { ascending: false });
@@ -16,13 +18,14 @@ export const politicianService = {
         }
     },
 
+    // Pobierz wpisy polityków z danymi o politykach
     async fetchPoliticianPosts() {
         try {
             const { data, error } = await supabase
-                .from('infoapp_politician_posts')
+                .from('infoapp_politician_posts')  // ← ZMIENIONE
                 .select(`
           *,
-          politicians (
+          infoapp_politicians (  
             name,
             party,
             photo_url
@@ -33,11 +36,12 @@ export const politicianService = {
 
             if (error) throw error;
 
+            // Przekształć dane do płaskiej struktury
             const transformedData = data.map(post => ({
                 ...post,
-                politician_name: post.politicians?.name,
-                politician_party: post.politicians?.party,
-                politician_photo: post.politicians?.photo_url,
+                politician_name: post.infoapp_politicians?.name,  // ← ZMIENIONE
+                politician_party: post.infoapp_politicians?.party,  // ← ZMIENIONE
+                politician_photo: post.infoapp_politicians?.photo_url,  // ← ZMIENIONE
             }));
 
             return handleSupabaseSuccess(transformedData, 'fetchPoliticianPosts');
@@ -50,7 +54,7 @@ export const politicianService = {
     async addPolitician(politicianData) {
         try {
             const { data, error } = await supabase
-                .from('infoapp_politicians')
+                .from('infoapp_politicians')  // ← ZMIENIONE
                 .insert([{
                     name: politicianData.name,
                     party: politicianData.party,
@@ -67,10 +71,11 @@ export const politicianService = {
         }
     },
 
+    // Dodaj wpis polityka
     async addPoliticianPost(postData) {
         try {
             const { data, error } = await supabase
-                .from('infoapp_politician_posts')
+                .from('infoapp_politician_posts')  // ← ZMIENIONE
                 .insert([{
                     politician_id: postData.politician_id,
                     title: postData.title,
@@ -90,13 +95,14 @@ export const politicianService = {
         }
     },
 
+    // Pobierz wpisy konkretnego polityka
     async getPoliticianPosts(politicianId) {
         try {
             const { data, error } = await supabase
-                .from('infoapp_politician_posts')
+                .from('infoapp_politician_posts')  // ← ZMIENIONE
                 .select(`
           *,
-          politicians (
+          infoapp_politicians (  
             name,
             party,
             photo_url
@@ -110,9 +116,9 @@ export const politicianService = {
 
             const transformedData = data.map(post => ({
                 ...post,
-                politician_name: post.politicians?.name,
-                politician_party: post.politicians?.party,
-                politician_photo: post.politicians?.photo_url,
+                politician_name: post.infoapp_politicians?.name,  // ← ZMIENIONE
+                politician_party: post.infoapp_politicians?.party,  // ← ZMIENIONE
+                politician_photo: post.infoapp_politicians?.photo_url,  // ← ZMIENIONE
             }));
 
             return handleSupabaseSuccess(transformedData, 'getPoliticianPosts');
@@ -121,16 +127,21 @@ export const politicianService = {
         }
     },
 
+    // Aktualizuj liczbę polubień wpisu polityka
     async updatePostLikesCount(postId, increment = true) {
         try {
-            const { data, error } = await supabase.rpc('update_likes_count', {
-                table_name: 'politician_posts',
-                post_id: postId,
-                increment_value: increment ? 1 : -1
-            });
+            const { data, error } = await supabase
+                .from('infoapp_politician_posts')  // ← ZMIENIONE
+                .update({
+                    likes_count: increment
+                        ? supabase.raw('likes_count + 1')
+                        : supabase.raw('likes_count - 1')
+                })
+                .eq('id', postId)
+                .select();
 
             if (error) throw error;
-            return handleSupabaseSuccess(data, 'updatePostLikesCount');
+            return handleSupabaseSuccess(data[0], 'updatePostLikesCount');
         } catch (error) {
             return handleSupabaseError(error, 'updatePostLikesCount');
         }
@@ -139,14 +150,18 @@ export const politicianService = {
     // Aktualizuj liczbę komentarzy wpisu polityka
     async updatePostCommentsCount(postId, increment = true) {
         try {
-            const { data, error } = await supabase.rpc('update_comments_count', {
-                table_name: 'politician_posts',
-                post_id: postId,
-                increment_value: increment ? 1 : -1
-            });
+            const { data, error } = await supabase
+                .from('infoapp_politician_posts')  // ← ZMIENIONE
+                .update({
+                    comments_count: increment
+                        ? supabase.raw('comments_count + 1')
+                        : supabase.raw('comments_count - 1')
+                })
+                .eq('id', postId)
+                .select();
 
             if (error) throw error;
-            return handleSupabaseSuccess(data, 'updatePostCommentsCount');
+            return handleSupabaseSuccess(data[0], 'updatePostCommentsCount');
         } catch (error) {
             return handleSupabaseError(error, 'updatePostCommentsCount');
         }
@@ -160,7 +175,7 @@ export const politicianService = {
                 {
                     event: '*',
                     schema: 'public',
-                    table: 'politician_posts',
+                    table: 'infoapp_politician_posts',  // ← ZMIENIONE
                     filter: 'is_active=eq.true'
                 },
                 callback
@@ -181,10 +196,10 @@ export const politicianService = {
     async searchPoliticianPosts(query) {
         try {
             const { data, error } = await supabase
-                .from('infoapp_politician_posts')
+                .from('infoapp_politician_posts')  // ← ZMIENIONE
                 .select(`
           *,
-          politicians (
+          infoapp_politicians (  
             name,
             party,
             photo_url
@@ -198,9 +213,9 @@ export const politicianService = {
 
             const transformedData = data.map(post => ({
                 ...post,
-                politician_name: post.politicians?.name,
-                politician_party: post.politicians?.party,
-                politician_photo: post.politicians?.photo_url,
+                politician_name: post.infoapp_politicians?.name,  // ← ZMIENIONE
+                politician_party: post.infoapp_politicians?.party,  // ← ZMIENIONE
+                politician_photo: post.infoapp_politicians?.photo_url,  // ← ZMIENIONE
             }));
 
             return handleSupabaseSuccess(transformedData, 'searchPoliticianPosts');
@@ -209,10 +224,11 @@ export const politicianService = {
         }
     },
 
+    // Pobierz statystyki polityka
     async getPoliticianStats(politicianId) {
         try {
             const { data, error } = await supabase
-                .from('infoapp_politician_posts')
+                .from('infoapp_politician_posts')  // ← ZMIENIONE
                 .select('likes_count, comments_count')
                 .eq('politician_id', politicianId)
                 .eq('is_active', true);

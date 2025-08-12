@@ -1,20 +1,44 @@
-import React, { useState } from 'react';
+// src/components/politician/PoliticianCard.js - Z działającym przyciskiem Śledź
+import React, { useState, useEffect } from 'react';
 import {
     View,
     Text,
     StyleSheet,
     TouchableOpacity,
     Dimensions,
+    Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../styles/colors';
+import { userService } from '../../services/userService';
 
 const { width } = Dimensions.get('window');
 
 const PoliticianCard = ({ post, onPress, onLike, onComment }) => {
     const [liked, setLiked] = useState(false);
     const [likesCount, setLikesCount] = useState(post.likes_count || 0);
+    const [isFollowing, setIsFollowing] = useState(false);
+    const [currentUser, setCurrentUser] = useState(null);
+
+    useEffect(() => {
+        initializeUser();
+        checkIfFollowing();
+    }, [post.politician_id]);
+
+    const initializeUser = async () => {
+        const user = await userService.getCurrentUser();
+        setCurrentUser(user);
+    };
+
+    const checkIfFollowing = async () => {
+        // Sprawdź czy użytkownik śledzi tego polityka (lokalnie)
+        const user = await userService.getCurrentUser();
+        if (user && user.followedPoliticians) {
+            const following = user.followedPoliticians.includes(post.politician_id);
+            setIsFollowing(following);
+        }
+    };
 
     const formatTime = (timestamp) => {
         const date = new Date(timestamp);
@@ -46,6 +70,73 @@ const PoliticianCard = ({ post, onPress, onLike, onComment }) => {
         }
     };
 
+    const handleFollow = async () => {
+        if (!currentUser) {
+            Alert.alert('Info', 'Funkcja śledzenia wymaga zalogowania');
+            return;
+        }
+
+        try {
+            const newFollowingState = !isFollowing;
+            setIsFollowing(newFollowingState);
+
+            // Aktualizuj listę śledzonych polityków w profilu użytkownika
+            const user = await userService.getCurrentUser();
+            const followedPoliticians = user.followedPoliticians || [];
+
+            if (newFollowingState) {
+                // Dodaj do śledzonych
+                if (!followedPoliticians.includes(post.politician_id)) {
+                    followedPoliticians.push(post.politician_id);
+                }
+
+                Alert.alert(
+                    'Śledzisz polityka!',
+                    `Będziesz otrzymywać powiadomienia o nowych wpisach od ${post.politician_name || 'tego polityka'}.`,
+                    [{ text: 'Super!' }]
+                );
+            } else {
+                // Usuń ze śledzonych
+                const index = followedPoliticians.indexOf(post.politician_id);
+                if (index > -1) {
+                    followedPoliticians.splice(index, 1);
+                }
+
+                Alert.alert(
+                    'Przestałeś śledzić',
+                    `Nie będziesz już otrzymywać powiadomień od ${post.politician_name || 'tego polityka'}.`,
+                    [{ text: 'OK' }]
+                );
+            }
+
+            // Zapisz w AsyncStorage
+            await userService.updateUser({ followedPoliticians });
+
+        } catch (error) {
+            console.error('Error following politician:', error);
+            // Rollback w przypadku błędu
+            setIsFollowing(!isFollowing);
+            Alert.alert('Błąd', 'Nie udało się zaktualizować śledzenia');
+        }
+    };
+
+    const handleShare = () => {
+        Alert.alert(
+            'Udostępnij wpis',
+            `"${post.title}" - ${post.politician_name} (${post.politician_party})\n\nChcesz udostępnić ten wpis?`,
+            [
+                { text: 'Anuluj', style: 'cancel' },
+                {
+                    text: 'Udostępnij',
+                    onPress: () => {
+                        // Tu będzie funkcja udostępniania
+                        Alert.alert('Udostępniono!', 'Wpis został udostępniony (funkcja w rozwoju)');
+                    }
+                }
+            ]
+        );
+    };
+
     return (
         <TouchableOpacity
             style={styles.container}
@@ -58,6 +149,7 @@ const PoliticianCard = ({ post, onPress, onLike, onComment }) => {
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
             >
+                {/* Header z informacjami o polityku */}
                 <View style={styles.header}>
                     <View style={styles.politicianInfo}>
                         <View style={styles.avatarContainer}>
@@ -90,6 +182,7 @@ const PoliticianCard = ({ post, onPress, onLike, onComment }) => {
                     </Text>
                 </View>
 
+                {/* Footer z interakcjami */}
                 <View style={styles.footer}>
                     <View style={styles.engagement}>
                         <TouchableOpacity
@@ -110,12 +203,22 @@ const PoliticianCard = ({ post, onPress, onLike, onComment }) => {
                             onPress={handleComment}
                             activeOpacity={0.7}
                         >
-                            <Ionicons name="chatbubble-outline" size={18} color={COLORS.white} />
+                            <View style={styles.commentIconContainer}>
+                                <Ionicons name="chatbubble-outline" size={18} color={COLORS.white} />
+                                {(post.comments_count || 0) > 0 && (
+                                    <View style={styles.commentBadge}>
+                                        <Text style={styles.commentBadgeText}>
+                                            {post.comments_count > 99 ? '99+' : post.comments_count}
+                                        </Text>
+                                    </View>
+                                )}
+                            </View>
                             <Text style={styles.engagementText}>{post.comments_count || 0}</Text>
                         </TouchableOpacity>
 
                         <TouchableOpacity
                             style={styles.engagementButton}
+                            onPress={handleShare}
                             activeOpacity={0.7}
                         >
                             <Ionicons name="share-outline" size={18} color={COLORS.white} />
@@ -123,12 +226,29 @@ const PoliticianCard = ({ post, onPress, onLike, onComment }) => {
                         </TouchableOpacity>
                     </View>
 
-                    <TouchableOpacity style={styles.followButton} activeOpacity={0.8}>
-                        <Ionicons name="add" size={16} color={COLORS.primary} />
-                        <Text style={styles.followText}>Śledź</Text>
+                    <TouchableOpacity
+                        style={[
+                            styles.followButton,
+                            isFollowing && styles.followButtonActive
+                        ]}
+                        onPress={handleFollow}
+                        activeOpacity={0.8}
+                    >
+                        <Ionicons
+                            name={isFollowing ? "checkmark" : "add"}
+                            size={16}
+                            color={isFollowing ? COLORS.white : COLORS.primary}
+                        />
+                        <Text style={[
+                            styles.followText,
+                            isFollowing && styles.followTextActive
+                        ]}>
+                            {isFollowing ? 'Śledzisz' : 'Śledź'}
+                        </Text>
                     </TouchableOpacity>
                 </View>
 
+                {/* Dekoracyjne elementy */}
                 <View style={styles.decorativeElement1} />
                 <View style={styles.decorativeElement2} />
             </LinearGradient>
@@ -251,6 +371,29 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         marginLeft: 6,
     },
+    commentIconContainer: {
+        position: 'relative',
+        marginRight: 6,
+    },
+    commentBadge: {
+        position: 'absolute',
+        top: -8,
+        right: -8,
+        backgroundColor: COLORS.error,
+        borderRadius: 8,
+        minWidth: 16,
+        height: 16,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: COLORS.white,
+    },
+    commentBadgeText: {
+        color: COLORS.white,
+        fontSize: 9,
+        fontWeight: 'bold',
+        textAlign: 'center',
+    },
     followButton: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -258,12 +401,21 @@ const styles = StyleSheet.create({
         paddingHorizontal: 16,
         paddingVertical: 8,
         borderRadius: 20,
+        borderWidth: 2,
+        borderColor: 'transparent',
+    },
+    followButtonActive: {
+        backgroundColor: 'rgba(255, 255, 255, 0.2)',
+        borderColor: COLORS.white,
     },
     followText: {
         color: COLORS.primary,
         fontSize: 14,
         fontWeight: '700',
         marginLeft: 4,
+    },
+    followTextActive: {
+        color: COLORS.white,
     },
     decorativeElement1: {
         position: 'absolute',

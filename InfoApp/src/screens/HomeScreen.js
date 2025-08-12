@@ -1,4 +1,4 @@
-// src/screens/HomeScreen.js
+// src/screens/HomeScreen.js - Z aktualizacjami liczników
 import React, { useState, useEffect } from 'react';
 import {
     View,
@@ -72,6 +72,13 @@ const HomeScreen = () => {
             console.log('Real-time update:', payload);
             if (payload.eventType === 'INSERT') {
                 setNews(prev => [payload.new, ...prev.slice(0, 4)]);
+            } else if (payload.eventType === 'UPDATE') {
+                // Aktualizuj liczniki w czasie rzeczywistym
+                setNews(prev =>
+                    prev.map(item =>
+                        item.id === payload.new.id ? payload.new : item
+                    )
+                );
             }
         });
         setNewsSubscription(subscription);
@@ -97,6 +104,51 @@ const HomeScreen = () => {
     const openComments = (item, type = 'news') => {
         setSelectedItem({ ...item, type });
         setModalVisible(true);
+    };
+
+    const handleCommentAdded = (postId, newCommentCount) => {
+        // Aktualizuj licznik komentarzy w odpowiednim poście
+        setNews(prev =>
+            prev.map(item =>
+                item.id === postId
+                    ? { ...item, comments_count: newCommentCount }
+                    : item
+            )
+        );
+
+        setPoliticianPosts(prev =>
+            prev.map(item =>
+                item.id === postId
+                    ? { ...item, comments_count: newCommentCount }
+                    : item
+            )
+        );
+    };
+
+    const handleLike = async (postId, isLiked, postType = 'news') => {
+        try {
+            if (postType === 'news') {
+                // Optymistyczna aktualizacja UI dla newsów
+                setNews(prev =>
+                    prev.map(item =>
+                        item.id === postId
+                            ? { ...item, likes_count: (item.likes_count || 0) + (isLiked ? 1 : -1) }
+                            : item
+                    )
+                );
+            } else {
+                // Optymistyczna aktualizacja UI dla wpisów polityków
+                setPoliticianPosts(prev =>
+                    prev.map(item =>
+                        item.id === postId
+                            ? { ...item, likes_count: (item.likes_count || 0) + (isLiked ? 1 : -1) }
+                            : item
+                    )
+                );
+            }
+        } catch (error) {
+            console.error('Error updating like in UI:', error);
+        }
     };
 
     if (loading) {
@@ -155,6 +207,8 @@ const HomeScreen = () => {
                                 key={item.id}
                                 news={item}
                                 onPress={() => openComments(item, 'news')}
+                                onLike={(postId, isLiked) => handleLike(postId, isLiked, 'news')}
+                                onComment={() => openComments(item, 'news')}
                             />
                         ))
                     ) : (
@@ -180,6 +234,8 @@ const HomeScreen = () => {
                                 key={item.id}
                                 post={item}
                                 onPress={() => openComments(item, 'politician_post')}
+                                onLike={(postId, isLiked) => handleLike(postId, isLiked, 'politician_post')}
+                                onComment={() => openComments(item, 'politician_post')}
                             />
                         ))
                     ) : (
@@ -208,7 +264,8 @@ const HomeScreen = () => {
                             </View>
                             <View style={styles.statItem}>
                                 <Text style={styles.statNumber}>
-                                    {news.reduce((sum, item) => sum + (item.comments_count || 0), 0)}
+                                    {news.reduce((sum, item) => sum + (item.comments_count || 0), 0) +
+                                        politicianPosts.reduce((sum, item) => sum + (item.comments_count || 0), 0)}
                                 </Text>
                                 <Text style={styles.statLabel}>Komentarzy</Text>
                             </View>
@@ -222,6 +279,7 @@ const HomeScreen = () => {
                 visible={modalVisible}
                 onClose={() => setModalVisible(false)}
                 item={selectedItem}
+                onCommentAdded={handleCommentAdded}
             />
         </SafeAreaView>
     );
