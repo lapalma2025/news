@@ -1,29 +1,24 @@
 {
-  "expo": {
-    "name": "InfoApp",
-    "slug": "InfoApp",
-    "version": "1.0.0",
-    "orientation": "portrait",
-    "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
-    "newArchEnabled": true,
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
-    "ios": {
-      "supportsTablet": true
-    },
-    "android": {
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
-      },
-      "edgeToEdgeEnabled": true
-    },
-    "web": {
-      "favicon": "./assets/favicon.png"
-    }
-  }
+	"expo": {
+		"name": "InfoApp",
+		"slug": "infoapp",
+		"version": "1.0.0",
+		"platforms": ["ios", "android", "web"],
+		"icon": "./assets/icon.png",
+		"userInterfaceStyle": "light",
+		"splash": {
+			"image": "./assets/splash.png",
+			"resizeMode": "contain",
+			"backgroundColor": "#667eea"
+		},
+		"plugins": [],
+		"android": {
+			"package": "com.yourname.infoapp",
+			"versionCode": 1
+		},
+		"ios": {
+			"bundleIdentifier": "com.yourname.infoapp",
+			"buildNumber": "1.0.0"
+		}
+	}
 }
