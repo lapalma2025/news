@@ -51,6 +51,28 @@
 				font-size: 1.1rem;
 			}
 
+			.connection-status {
+				position: fixed;
+				top: 20px;
+				right: 20px;
+				padding: 10px 15px;
+				border-radius: 25px;
+				font-size: 0.9rem;
+				font-weight: 600;
+				z-index: 1000;
+				backdrop-filter: blur(10px);
+			}
+
+			.connected {
+				background: rgba(16, 185, 129, 0.9);
+				color: white;
+			}
+
+			.disconnected {
+				background: rgba(239, 68, 68, 0.9);
+				color: white;
+			}
+
 			.admin-grid {
 				display: grid;
 				grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
@@ -65,12 +87,11 @@
 				padding: 30px;
 				box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
 				border: 1px solid rgba(255, 255, 255, 0.2);
-				transition: transform 0.3s ease, box-shadow 0.3s ease;
+				transition: transform 0.3s ease;
 			}
 
 			.admin-card:hover {
 				transform: translateY(-5px);
-				box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
 			}
 
 			.card-header {
@@ -152,16 +173,11 @@
 				display: inline-flex;
 				align-items: center;
 				gap: 8px;
-				text-decoration: none;
 			}
 
 			.btn:hover {
 				transform: translateY(-2px);
 				box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
-			}
-
-			.btn:active {
-				transform: translateY(0);
 			}
 
 			.btn-full {
@@ -183,11 +199,6 @@
 				padding: 25px;
 				text-align: center;
 				border: 1px solid rgba(255, 255, 255, 0.2);
-				transition: transform 0.3s ease;
-			}
-
-			.stat-card:hover {
-				transform: translateY(-3px);
 			}
 
 			.stat-number {
@@ -284,28 +295,6 @@
 				.admin-card {
 					padding: 20px;
 				}
-			}
-
-			.connection-status {
-				position: fixed;
-				top: 20px;
-				right: 20px;
-				padding: 10px 15px;
-				border-radius: 25px;
-				font-size: 0.9rem;
-				font-weight: 600;
-				z-index: 1000;
-				backdrop-filter: blur(10px);
-			}
-
-			.connected {
-				background: rgba(16, 185, 129, 0.9);
-				color: white;
-			}
-
-			.disconnected {
-				background: rgba(239, 68, 68, 0.9);
-				color: white;
 			}
 		</style>
 	</head>
@@ -460,10 +449,16 @@
 
 					<div id="politicianMessage"></div>
 
-					<!-- Lista polityków -->
-					<div style="margin-top: 30px">
+					<!-- Sekcja dodawania wpisów polityków -->
+					<div
+						style="
+							margin-top: 30px;
+							border-top: 1px solid #e5e7eb;
+							padding-top: 30px;
+						"
+					>
 						<h3 style="margin-bottom: 15px; color: #333">
-							Dodaj Wpis Polityka
+							<i class="fas fa-megaphone"></i> Dodaj Wpis Polityka
 						</h3>
 
 						<form id="politicianPostForm">
@@ -534,6 +529,7 @@
 				SUPABASE_ANON_KEY
 			);
 
+			// Sprawdzanie połączenia
 			async function checkConnection() {
 				const statusEl = document.getElementById("connectionStatus");
 				try {
@@ -541,6 +537,7 @@
 						.from("infoapp_news")
 						.select("id")
 						.limit(1);
+
 					if (error) throw error;
 
 					statusEl.innerHTML = '<i class="fas fa-check-circle"></i> Połączono';
@@ -604,14 +601,14 @@
 				try {
 					const { data, error } = await supabaseClient
 						.from("infoapp_politicians")
-						.select("*")
+						.select("id, name, party")
 						.eq("is_active", true)
-						.order("name");
+						.order("created_at", { ascending: false });
 
 					if (error) throw error;
 
 					const select = document.getElementById("selectedPolitician");
-					select.innerHTML = '<option value="">Wybierz polityka</option>';
+					select.innerHTML = '<option value="">Wybierz polityka...</option>';
 
 					data.forEach((politician) => {
 						const option = document.createElement("option");
@@ -640,9 +637,12 @@
 							.from("politician_posts")
 							.select(
 								`
-                        *,
-                        politicians (name, party)
-                    `
+                            *,
+                            politicians:politician_id (
+                                name,
+                                party
+                            )
+                        `
 							)
 							.eq("is_active", true)
 							.order("created_at", { ascending: false })
@@ -652,66 +652,58 @@
 					const container = document.getElementById("recentPosts");
 					container.innerHTML = "";
 
-					// Dodaj newsy
-					if (newsResult.data && newsResult.data.length > 0) {
-						newsResult.data.forEach((news) => {
-							const item = createPostItem(news, "news");
-							container.appendChild(item);
-						});
-					}
+					const allPosts = [
+						...newsResult.data.map((post) => ({ ...post, type: "news" })),
+						...postsResult.data.map((post) => ({
+							...post,
+							type: "politician_post",
+						})),
+					].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
-					// Dodaj wpisy polityków
-					if (postsResult.data && postsResult.data.length > 0) {
-						postsResult.data.forEach((post) => {
-							const item = createPostItem(post, "politician");
-							container.appendChild(item);
-						});
-					}
-
-					if (container.children.length === 0) {
+					if (allPosts.length === 0) {
 						container.innerHTML =
 							'<div class="loading">Brak wpisów do wyświetlenia</div>';
+						return;
 					}
+
+					allPosts.forEach((post) => {
+						const div = document.createElement("div");
+						div.className = "post-item";
+
+						const authorName =
+							post.type === "news"
+								? post.author
+								: post.politicians
+								? `${post.politicians.name} (${post.politicians.party})`
+								: "Nieznany polityk";
+
+						const typeLabel = post.type === "news" ? "News" : "Wpis polityka";
+						const timeAgo = new Date(post.created_at).toLocaleString("pl-PL");
+
+						div.innerHTML = `
+                        <div class="post-content">
+                            <h4>${post.title}</h4>
+                            <div class="post-meta">
+                                ${typeLabel} • ${authorName} • ${timeAgo}
+                            </div>
+                        </div>
+                        <div class="post-stats">
+                            <span><i class="fas fa-heart"></i> ${
+															post.likes_count || 0
+														}</span>
+                            <span><i class="fas fa-comment"></i> ${
+															post.comments_count || 0
+														}</span>
+                        </div>
+                    `;
+
+						container.appendChild(div);
+					});
 				} catch (error) {
 					console.error("Error loading recent posts:", error);
 					document.getElementById("recentPosts").innerHTML =
 						'<div class="loading">Błąd ładowania wpisów</div>';
 				}
-			}
-
-			// Tworzenie elementu wpisu
-			function createPostItem(post, type) {
-				const div = document.createElement("div");
-				div.className = "post-item";
-
-				const authorName =
-					type === "news"
-						? post.author
-						: post.politicians
-						? `${post.politicians.name} (${post.politicians.party})`
-						: "Nieznany polityk";
-
-				const typeLabel = type === "news" ? "News" : "Wpis polityka";
-				const timeAgo = new Date(post.created_at).toLocaleString("pl-PL");
-
-				div.innerHTML = `
-                <div class="post-content">
-                    <h4>${post.title}</h4>
-                    <div class="post-meta">
-                        ${typeLabel} • ${authorName} • ${timeAgo}
-                    </div>
-                </div>
-                <div class="post-stats">
-                    <span><i class="fas fa-heart"></i> ${
-											post.likes_count || 0
-										}</span>
-                    <span><i class="fas fa-comment"></i> ${
-											post.comments_count || 0
-										}</span>
-                </div>
-            `;
-
-				return div;
 			}
 
 			// Obsługa formularzy

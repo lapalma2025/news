@@ -1,5 +1,5 @@
-// src/screens/HomeScreen.js - Z aktualizacjami liczników
-import React, { useState, useEffect } from 'react';
+// src/screens/HomeScreen.js - NAPRAWIONY
+import React, { useState, useEffect, useRef } from 'react';
 import {
     View,
     Text,
@@ -26,6 +26,7 @@ const { width } = Dimensions.get('window');
 
 const HomeScreen = () => {
     const [news, setNews] = useState([]);
+    const [originalNews, setOriginalNews] = useState([]); // Oryginalne newsy
     const [politicianPosts, setPoliticianPosts] = useState([]);
     const [refreshing, setRefreshing] = useState(false);
     const [loading, setLoading] = useState(true);
@@ -33,6 +34,10 @@ const HomeScreen = () => {
     const [modalVisible, setModalVisible] = useState(false);
     const [selectedItem, setSelectedItem] = useState(null);
     const [newsSubscription, setNewsSubscription] = useState(null);
+
+    // Ref dla debounce search
+    const searchTimeoutRef = useRef(null);
+    const isSearching = useRef(false);
 
     useEffect(() => {
         loadData();
@@ -42,8 +47,16 @@ const HomeScreen = () => {
             if (newsSubscription) {
                 newsService.unsubscribeFromNews(newsSubscription);
             }
+            if (searchTimeoutRef.current) {
+                clearTimeout(searchTimeoutRef.current);
+            }
         };
     }, []);
+
+    // Real-time search effect
+    useEffect(() => {
+        handleSearchDebounced();
+    }, [searchQuery]);
 
     const loadData = async () => {
         setLoading(true);
@@ -54,11 +67,13 @@ const HomeScreen = () => {
             ]);
 
             if (newsResponse.success) {
-                setNews(newsResponse.data.slice(0, 5)); // Pokaż tylko 5 najnowszych
+                const newsData = newsResponse.data.slice(0, 5);
+                setNews(newsData);
+                setOriginalNews(newsData); // Zachowaj oryginalne
             }
 
             if (postsResponse.success) {
-                setPoliticianPosts(postsResponse.data.slice(0, 3)); // Pokaż tylko 3 najnowsze
+                setPoliticianPosts(postsResponse.data.slice(0, 3));
             }
         } catch (error) {
             Alert.alert('Błąd', 'Nie udało się załadować danych');
@@ -72,9 +87,15 @@ const HomeScreen = () => {
             console.log('Real-time update:', payload);
             if (payload.eventType === 'INSERT') {
                 setNews(prev => [payload.new, ...prev.slice(0, 4)]);
+                setOriginalNews(prev => [payload.new, ...prev.slice(0, 4)]);
             } else if (payload.eventType === 'UPDATE') {
                 // Aktualizuj liczniki w czasie rzeczywistym
                 setNews(prev =>
+                    prev.map(item =>
+                        item.id === payload.new.id ? payload.new : item
+                    )
+                );
+                setOriginalNews(prev =>
                     prev.map(item =>
                         item.id === payload.new.id ? payload.new : item
                     )
@@ -84,21 +105,57 @@ const HomeScreen = () => {
         setNewsSubscription(subscription);
     };
 
-    const onRefresh = async () => {
-        setRefreshing(true);
-        await loadData();
-        setRefreshing(false);
+    const handleSearchDebounced = () => {
+        // Wyczyść poprzedni timeout
+        if (searchTimeoutRef.current) {
+            clearTimeout(searchTimeoutRef.current);
+        }
+
+        // Ustaw nowy timeout
+        searchTimeoutRef.current = setTimeout(() => {
+            handleSearch();
+        }, 300); // 300ms debounce
     };
 
     const handleSearch = async () => {
-        if (!searchQuery.trim()) return;
+        const query = searchQuery.trim();
 
-        const response = await newsService.searchNews(searchQuery);
-        if (response.success) {
-            setNews(response.data);
-        } else {
-            Alert.alert('Błąd', 'Nie udało się wyszukać newsów');
+        // Jeśli puste, przywróć oryginalne newsy
+        if (!query) {
+            setNews(originalNews);
+            isSearching.current = false;
+            return;
         }
+
+        try {
+            isSearching.current = true;
+
+            // Najpierw filtruj lokalnie dla szybkiej odpowiedzi
+            const localFiltered = originalNews.filter(item =>
+                item.title.toLowerCase().includes(query.toLowerCase()) ||
+                item.content.toLowerCase().includes(query.toLowerCase()) ||
+                item.author.toLowerCase().includes(query.toLowerCase())
+            );
+            setNews(localFiltered);
+
+            // Następnie wyszukaj w bazie danych
+            const response = await newsService.searchNews(query);
+            if (response.success) {
+                setNews(response.data);
+            }
+        } catch (error) {
+            console.error('Search error:', error);
+            // W przypadku błędu, zostaw lokalne filtrowanie
+        } finally {
+            isSearching.current = false;
+        }
+    };
+
+    const onRefresh = async () => {
+        setRefreshing(true);
+        setSearchQuery(''); // Wyczyść wyszukiwanie
+        await loadData();
+        setRefreshing(false);
     };
 
     const openComments = (item, type = 'news') => {
@@ -109,6 +166,14 @@ const HomeScreen = () => {
     const handleCommentAdded = (postId, newCommentCount) => {
         // Aktualizuj licznik komentarzy w odpowiednim poście
         setNews(prev =>
+            prev.map(item =>
+                item.id === postId
+                    ? { ...item, comments_count: newCommentCount }
+                    : item
+            )
+        );
+
+        setOriginalNews(prev =>
             prev.map(item =>
                 item.id === postId
                     ? { ...item, comments_count: newCommentCount }
@@ -128,8 +193,14 @@ const HomeScreen = () => {
     const handleLike = async (postId, isLiked, postType = 'news') => {
         try {
             if (postType === 'news') {
-                // Optymistyczna aktualizacja UI dla newsów
                 setNews(prev =>
+                    prev.map(item =>
+                        item.id === postId
+                            ? { ...item, likes_count: (item.likes_count || 0) + (isLiked ? 1 : -1) }
+                            : item
+                    )
+                );
+                setOriginalNews(prev =>
                     prev.map(item =>
                         item.id === postId
                             ? { ...item, likes_count: (item.likes_count || 0) + (isLiked ? 1 : -1) }
@@ -149,6 +220,11 @@ const HomeScreen = () => {
         } catch (error) {
             console.error('Error updating like in UI:', error);
         }
+    };
+
+    const clearSearch = () => {
+        setSearchQuery('');
+        setNews(originalNews);
     };
 
     if (loading) {
@@ -177,28 +253,49 @@ const HomeScreen = () => {
                     <Text style={styles.welcomeText}>Witaj w InfoApp</Text>
                     <Text style={styles.subtitleText}>Bądź na bieżąco z najważniejszymi wydarzeniami</Text>
 
+                    {/* NAPRAWIONY SEARCH INPUT */}
                     <View style={styles.searchContainer}>
-                        <TextInput
-                            style={styles.searchInput}
-                            placeholder="Szukaj newsów..."
-                            placeholderTextColor={COLORS.gray}
-                            value={searchQuery}
-                            onChangeText={setSearchQuery}
-                            onSubmitEditing={handleSearch}
-                        />
-                        <TouchableOpacity style={styles.searchButton} onPress={handleSearch}>
-                            <Ionicons name="search" size={20} color={COLORS.white} />
-                        </TouchableOpacity>
+                        <View style={styles.searchInputContainer}>
+                            <Ionicons name="search" size={20} color={COLORS.gray} style={styles.searchIcon} />
+                            <TextInput
+                                style={styles.searchInput}
+                                placeholder="Szukaj newsów..."
+                                placeholderTextColor={COLORS.gray}
+                                value={searchQuery}
+                                onChangeText={setSearchQuery} // REAL-TIME SEARCH
+                                returnKeyType="search"
+                                autoCorrect={false}
+                                autoCapitalize="none"
+                            />
+                            {searchQuery.length > 0 && (
+                                <TouchableOpacity onPress={clearSearch} style={styles.clearButton}>
+                                    <Ionicons name="close-circle" size={20} color={COLORS.gray} />
+                                </TouchableOpacity>
+                            )}
+                        </View>
                     </View>
+
+                    {/* Wyniki wyszukiwania */}
+                    {searchQuery.length > 0 && (
+                        <View style={styles.searchResults}>
+                            <Text style={styles.searchResultsText}>
+                                {news.length} {news.length === 1 ? 'wynik' : 'wyników'} dla "{searchQuery}"
+                            </Text>
+                        </View>
+                    )}
                 </LinearGradient>
 
                 {/* Sekcja najnowszych newsów */}
                 <View style={styles.section}>
                     <View style={styles.sectionHeader}>
-                        <Text style={styles.sectionTitle}>Najnowsze Newsy</Text>
-                        <TouchableOpacity>
-                            <Text style={styles.seeAllText}>Zobacz więcej</Text>
-                        </TouchableOpacity>
+                        <Text style={styles.sectionTitle}>
+                            {searchQuery ? 'Wyniki wyszukiwania' : 'Najnowsze Newsy'}
+                        </Text>
+                        {!searchQuery && (
+                            <TouchableOpacity>
+                                <Text style={styles.seeAllText}>Zobacz więcej</Text>
+                            </TouchableOpacity>
+                        )}
                     </View>
 
                     {news.length > 0 ? (
@@ -206,72 +303,54 @@ const HomeScreen = () => {
                             <NewsCard
                                 key={item.id}
                                 news={item}
-                                onPress={() => openComments(item, 'news')}
-                                onLike={(postId, isLiked) => handleLike(postId, isLiked, 'news')}
-                                onComment={() => openComments(item, 'news')}
+                                onPress={() => openComments(item)}
+                                onLike={handleLike}
+                                onComment={() => openComments(item)}
                             />
                         ))
                     ) : (
                         <View style={styles.emptyState}>
-                            <Ionicons name="newspaper-outline" size={48} color={COLORS.gray} />
-                            <Text style={styles.emptyStateText}>Brak newsów do wyświetlenia</Text>
+                            <Ionicons name="search-outline" size={48} color={COLORS.gray} />
+                            <Text style={styles.emptyStateText}>
+                                {searchQuery ? 'Brak wyników wyszukiwania' : 'Brak newsów'}
+                            </Text>
+                            {searchQuery && (
+                                <TouchableOpacity onPress={clearSearch} style={styles.clearSearchButton}>
+                                    <Text style={styles.clearSearchText}>Wyczyść wyszukiwanie</Text>
+                                </TouchableOpacity>
+                            )}
                         </View>
                     )}
                 </View>
 
-                {/* Sekcja wpisów polityków */}
-                <View style={styles.section}>
-                    <View style={styles.sectionHeader}>
-                        <Text style={styles.sectionTitle}>Politycy na żywo</Text>
-                        <TouchableOpacity>
-                            <Text style={styles.seeAllText}>Zobacz więcej</Text>
-                        </TouchableOpacity>
+                {/* Sekcja wpisów polityków - ukryj podczas wyszukiwania */}
+                {!searchQuery && (
+                    <View style={styles.section}>
+                        <View style={styles.sectionHeader}>
+                            <Text style={styles.sectionTitle}>Komunikaty Polityków</Text>
+                            <TouchableOpacity>
+                                <Text style={styles.seeAllText}>Zobacz więcej</Text>
+                            </TouchableOpacity>
+                        </View>
+
+                        {politicianPosts.length > 0 ? (
+                            politicianPosts.map((item) => (
+                                <PoliticianCard
+                                    key={item.id}
+                                    post={item}
+                                    onPress={() => openComments(item, 'politician_post')}
+                                    onLike={handleLike}
+                                    onComment={() => openComments(item, 'politician_post')}
+                                />
+                            ))
+                        ) : (
+                            <View style={styles.emptyState}>
+                                <Ionicons name="person-outline" size={48} color={COLORS.gray} />
+                                <Text style={styles.emptyStateText}>Brak komunikatów polityków</Text>
+                            </View>
+                        )}
                     </View>
-
-                    {politicianPosts.length > 0 ? (
-                        politicianPosts.map((item) => (
-                            <PoliticianCard
-                                key={item.id}
-                                post={item}
-                                onPress={() => openComments(item, 'politician_post')}
-                                onLike={(postId, isLiked) => handleLike(postId, isLiked, 'politician_post')}
-                                onComment={() => openComments(item, 'politician_post')}
-                            />
-                        ))
-                    ) : (
-                        <View style={styles.emptyState}>
-                            <Ionicons name="people-outline" size={48} color={COLORS.gray} />
-                            <Text style={styles.emptyStateText}>Brak wpisów polityków</Text>
-                        </View>
-                    )}
-                </View>
-
-                {/* Statystyki */}
-                <View style={styles.statsSection}>
-                    <LinearGradient
-                        colors={[COLORS.primary, COLORS.secondary]}
-                        style={styles.statsCard}
-                    >
-                        <Text style={styles.statsTitle}>Dzisiaj w InfoApp</Text>
-                        <View style={styles.statsRow}>
-                            <View style={styles.statItem}>
-                                <Text style={styles.statNumber}>{news.length}</Text>
-                                <Text style={styles.statLabel}>Nowych newsów</Text>
-                            </View>
-                            <View style={styles.statItem}>
-                                <Text style={styles.statNumber}>{politicianPosts.length}</Text>
-                                <Text style={styles.statLabel}>Wpisów polityków</Text>
-                            </View>
-                            <View style={styles.statItem}>
-                                <Text style={styles.statNumber}>
-                                    {news.reduce((sum, item) => sum + (item.comments_count || 0), 0) +
-                                        politicianPosts.reduce((sum, item) => sum + (item.comments_count || 0), 0)}
-                                </Text>
-                                <Text style={styles.statLabel}>Komentarzy</Text>
-                            </View>
-                        </View>
-                    </LinearGradient>
-                </View>
+                )}
             </ScrollView>
 
             {/* Modal komentarzy */}
@@ -300,58 +379,80 @@ const styles = StyleSheet.create({
     },
     loadingText: {
         fontSize: 16,
-        color: COLORS.textSecondary,
+        color: COLORS.gray,
     },
     header: {
-        padding: 20,
+        paddingHorizontal: 20,
+        paddingTop: 20,
         paddingBottom: 30,
     },
     welcomeText: {
         fontSize: 28,
-        fontWeight: 'bold',
+        fontWeight: '700',
         color: COLORS.white,
-        marginBottom: 5,
+        textAlign: 'center',
+        marginBottom: 8,
     },
     subtitleText: {
         fontSize: 16,
         color: COLORS.white,
+        textAlign: 'center',
         opacity: 0.9,
-        marginBottom: 20,
+        marginBottom: 25,
     },
     searchContainer: {
+        marginBottom: 10,
+    },
+    searchInputContainer: {
         flexDirection: 'row',
+        alignItems: 'center',
         backgroundColor: COLORS.white,
         borderRadius: 25,
-        paddingHorizontal: 15,
-        paddingVertical: 5,
-        alignItems: 'center',
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        shadowColor: COLORS.black,
+        shadowOffset: {
+            width: 0,
+            height: 2,
+        },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 3,
+    },
+    searchIcon: {
+        marginRight: 10,
     },
     searchInput: {
         flex: 1,
         fontSize: 16,
-        paddingVertical: 10,
-        color: COLORS.textPrimary,
+        color: COLORS.black,
     },
-    searchButton: {
-        backgroundColor: COLORS.primary,
-        padding: 10,
-        borderRadius: 20,
-        marginLeft: 10,
+    clearButton: {
+        padding: 4,
+    },
+    searchResults: {
+        paddingTop: 10,
+    },
+    searchResultsText: {
+        color: COLORS.white,
+        fontSize: 14,
+        textAlign: 'center',
+        opacity: 0.9,
     },
     section: {
-        marginTop: 20,
         paddingHorizontal: 20,
+        paddingTop: 20,
     },
     sectionHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: 15,
+        marginBottom: 16,
     },
     sectionTitle: {
         fontSize: 20,
-        fontWeight: 'bold',
-        color: COLORS.textPrimary,
+        fontWeight: '700',
+        color: COLORS.black,
     },
     seeAllText: {
         fontSize: 14,
@@ -364,43 +465,20 @@ const styles = StyleSheet.create({
     },
     emptyStateText: {
         fontSize: 16,
-        color: COLORS.textSecondary,
+        color: COLORS.gray,
+        textAlign: 'center',
         marginTop: 10,
     },
-    statsSection: {
+    clearSearchButton: {
+        marginTop: 15,
         paddingHorizontal: 20,
-        marginTop: 20,
-        marginBottom: 30,
+        paddingVertical: 10,
+        backgroundColor: COLORS.primary,
+        borderRadius: 20,
     },
-    statsCard: {
-        padding: 20,
-        borderRadius: 15,
-        alignItems: 'center',
-    },
-    statsTitle: {
-        fontSize: 18,
-        fontWeight: 'bold',
+    clearSearchText: {
         color: COLORS.white,
-        marginBottom: 15,
-    },
-    statsRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-around',
-        width: '100%',
-    },
-    statItem: {
-        alignItems: 'center',
-    },
-    statNumber: {
-        fontSize: 24,
-        fontWeight: 'bold',
-        color: COLORS.white,
-    },
-    statLabel: {
-        fontSize: 12,
-        color: COLORS.white,
-        opacity: 0.9,
-        marginTop: 5,
+        fontWeight: '600',
     },
 });
 

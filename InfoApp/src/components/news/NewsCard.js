@@ -1,90 +1,79 @@
-// src/components/news/NewsCard.js - Ostateczna naprawa polubień
+// src/components/news/NewsCard.js - NAPRAWIONY
 import React, { useState, useEffect } from 'react';
 import {
     View,
     Text,
     StyleSheet,
     TouchableOpacity,
-    Dimensions,
     Alert,
+    Image,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+
 import { COLORS } from '../../styles/colors';
-import { userService } from '../../services/userService';
 import { newsService } from '../../services/newsService';
+import { userService } from '../../services/userService';
 
-const { width } = Dimensions.get('window');
-
-const NewsCard = ({ news, onPress, onLike, onComment }) => {
+const NewsCard = ({ news, onPress, onComment, onLike }) => {
     const [liked, setLiked] = useState(false);
     const [likesCount, setLikesCount] = useState(news.likes_count || 0);
+    const [commentsCount, setCommentsCount] = useState(news.comments_count || 0);
     const [isFavorite, setIsFavorite] = useState(false);
     const [isLiking, setIsLiking] = useState(false);
     const [currentUser, setCurrentUser] = useState(null);
+    const [subscription, setSubscription] = useState(null);
 
     useEffect(() => {
-        initializeUser();
-        checkIfFavorite();
+        initializeCard();
+        setupRealtimeSubscription();
+
+        return () => {
+            if (subscription) {
+                newsService.unsubscribeFromNews(subscription);
+            }
+        };
     }, [news.id]);
 
-    useEffect(() => {
-        if (currentUser) {
-            checkIfLiked();
-        }
-    }, [currentUser, news.id]);
-
-    const initializeUser = async () => {
-        const user = await userService.getCurrentUser();
-        setCurrentUser(user);
-    };
-
-    const checkIfFavorite = async () => {
-        const favorite = await userService.isFavorite(news.id);
-        setIsFavorite(favorite);
-    };
-
-    const checkIfLiked = async () => {
-        if (!currentUser) return;
-
+    const initializeCard = async () => {
         try {
-            const response = await newsService.checkIfLiked(news.id, currentUser.id);
-            if (response.success) {
-                setLiked(response.data);
+            const user = await userService.getCurrentUser();
+            setCurrentUser(user);
+
+            if (user) {
+                // Sprawdź czy użytkownik polubił artykuł
+                const likedResponse = await newsService.checkIfLiked(news.id, user.id);
+                if (likedResponse.success) {
+                    setLiked(likedResponse.data);
+                }
+
+                // Sprawdź czy artykuł jest w ulubionych
+                const favorites = user.stats?.favoriteArticles || [];
+                setIsFavorite(favorites.some(fav => fav.id === news.id));
             }
         } catch (error) {
-            console.error('Error checking like status:', error);
+            console.error('Error initializing card:', error);
         }
     };
 
-    const formatTime = (timestamp) => {
-        const date = new Date(timestamp);
-        const now = new Date();
-        const diffInHours = Math.floor((now - date) / (1000 * 60 * 60));
-
-        if (diffInHours < 1) {
-            const diffInMinutes = Math.floor((now - date) / (1000 * 60));
-            return `${diffInMinutes}m temu`;
-        } else if (diffInHours < 24) {
-            return `${diffInHours}h temu`;
-        } else {
-            const diffInDays = Math.floor(diffInHours / 24);
-            return `${diffInDays}d temu`;
-        }
-    };
-
-    const getCategoryColor = (category) => {
-        const categoryLower = category.toLowerCase();
-        return COLORS.categories[categoryLower] || COLORS.categories.inne;
+    const setupRealtimeSubscription = () => {
+        const sub = newsService.subscribeToNews((payload) => {
+            if (payload.eventType === 'UPDATE' && payload.new.id === news.id) {
+                // Aktualizuj liczniki w czasie rzeczywistym
+                setLikesCount(payload.new.likes_count || 0);
+                setCommentsCount(payload.new.comments_count || 0);
+            }
+        });
+        setSubscription(sub);
     };
 
     const handleLike = async () => {
-        if (isLiking || !currentUser) {
-            if (!currentUser) {
-                Alert.alert('Info', 'Funkcja polubień wymaga zalogowania');
-            }
+        if (!currentUser) {
+            Alert.alert('Info', 'Zaloguj się, aby polubić artykuł');
             return;
         }
+
+        if (isLiking) return;
 
         setIsLiking(true);
 
@@ -134,6 +123,11 @@ const NewsCard = ({ news, onPress, onLike, onComment }) => {
     };
 
     const handleFavorite = async () => {
+        if (!currentUser) {
+            Alert.alert('Info', 'Zaloguj się, aby dodać do ulubionych');
+            return;
+        }
+
         try {
             if (isFavorite) {
                 await userService.removeFromFavorites(news.id);
@@ -159,158 +153,139 @@ const NewsCard = ({ news, onPress, onLike, onComment }) => {
         }
     };
 
-    const handleShare = () => {
-        Alert.alert(
-            'Udostępnij artykuł',
-            `"${news.title}" - ${news.author}\n\nChcesz udostępnić ten artykuł?`,
-            [
-                { text: 'Anuluj', style: 'cancel' },
-                {
-                    text: 'Udostępnij',
-                    onPress: () => {
-                        Alert.alert('Udostępniono!', 'Artykuł został udostępniony (funkcja w rozwoju)');
-                    }
-                }
-            ]
-        );
+    const formatTime = (timestamp) => {
+        const date = new Date(timestamp);
+        const now = new Date();
+        const diffInHours = Math.floor((now - date) / (1000 * 60 * 60));
+
+        if (diffInHours < 1) {
+            const diffInMinutes = Math.floor((now - date) / (1000 * 60));
+            return `${diffInMinutes}m temu`;
+        } else if (diffInHours < 24) {
+            return `${diffInHours}h temu`;
+        } else {
+            const diffInDays = Math.floor(diffInHours / 24);
+            return `${diffInDays}d temu`;
+        }
     };
 
-    const CommentBadge = ({ count }) => (
-        <TouchableOpacity
-            style={styles.engagementButton}
-            onPress={handleComment}
-            activeOpacity={0.7}
-        >
-            <View style={styles.commentIconContainer}>
-                <Ionicons name="chatbubble-outline" size={16} color={COLORS.comment} />
-                {count > 0 && (
-                    <View style={styles.commentBadge}>
-                        <Text style={styles.commentBadgeText}>
-                            {count > 99 ? '99+' : count}
-                        </Text>
-                    </View>
-                )}
-            </View>
-            <Text style={[styles.engagementText, { color: COLORS.comment }]}>
-                {count}
-            </Text>
-        </TouchableOpacity>
-    );
+    const truncateContent = (content, maxLength = 120) => {
+        if (content.length <= maxLength) return content;
+        return content.substring(0, maxLength) + '...';
+    };
 
     return (
-        <TouchableOpacity
-            style={styles.container}
-            onPress={handlePress}
-            activeOpacity={0.7}
-        >
-            <LinearGradient
-                colors={['#ffffff', '#f8faff']}
-                style={styles.card}
-            >
-                {/* Header */}
+        <View style={styles.container}>
+            <TouchableOpacity onPress={handlePress} activeOpacity={0.9}>
+                {/* Header z kategorią */}
                 <View style={styles.header}>
-                    <View
-                        style={[
-                            styles.categoryTag,
-                            { backgroundColor: getCategoryColor(news.category) }
-                        ]}
-                    >
+                    <View style={styles.categoryBadge}>
                         <Text style={styles.categoryText}>{news.category}</Text>
                     </View>
-                    <View style={styles.headerRight}>
-                        <Text style={styles.timestamp}>{formatTime(news.created_at)}</Text>
-                        <TouchableOpacity onPress={handleFavorite} style={styles.favoriteButton}>
-                            <Ionicons
-                                name={isFavorite ? "heart" : "heart-outline"}
-                                size={20}
-                                color={isFavorite ? COLORS.like : COLORS.gray}
-                            />
-                        </TouchableOpacity>
-                    </View>
+                    <TouchableOpacity onPress={handleFavorite}>
+                        <Ionicons
+                            name={isFavorite ? "bookmark" : "bookmark-outline"}
+                            size={20}
+                            color={isFavorite ? COLORS.primary : COLORS.gray}
+                        />
+                    </TouchableOpacity>
                 </View>
 
-                {/* Content */}
+                {/* Tytuł */}
                 <Text style={styles.title}>{news.title}</Text>
-                <Text style={styles.preview} numberOfLines={3}>
-                    {news.content}
+
+                {/* Treść */}
+                <Text style={styles.content}>
+                    {truncateContent(news.content)}
                 </Text>
 
-                {/* Footer */}
-                <View style={styles.footer}>
-                    <View style={styles.authorSection}>
-                        <Ionicons name="person-circle" size={20} color={COLORS.primary} />
-                        <Text style={styles.author}>{news.author}</Text>
-                    </View>
-
-                    <View style={styles.engagement}>
-                        <TouchableOpacity
-                            style={[
-                                styles.engagementButton,
-                                isLiking && styles.engagementButtonDisabled
-                            ]}
-                            onPress={handleLike}
-                            activeOpacity={0.7}
-                            disabled={isLiking}
-                        >
-                            <Ionicons
-                                name={liked ? "heart" : "heart-outline"}
-                                size={18}
-                                color={liked ? COLORS.like : COLORS.gray}
-                            />
-                            <Text style={[
-                                styles.engagementText,
-                                { color: liked ? COLORS.like : COLORS.gray }
-                            ]}>
-                                {likesCount}
-                            </Text>
-                        </TouchableOpacity>
-
-                        <CommentBadge count={news.comments_count || 0} />
-
-                        <TouchableOpacity
-                            style={styles.engagementButton}
-                            activeOpacity={0.7}
-                            onPress={handleShare}
-                        >
-                            <Ionicons name="share-outline" size={16} color={COLORS.share} />
-                        </TouchableOpacity>
-                    </View>
+                {/* Meta informacje */}
+                <View style={styles.meta}>
+                    <Text style={styles.author}>
+                        <Ionicons name="person-outline" size={14} color={COLORS.gray} />
+                        {' '}{news.author}
+                    </Text>
+                    <Text style={styles.time}>
+                        <Ionicons name="time-outline" size={14} color={COLORS.gray} />
+                        {' '}{formatTime(news.created_at)}
+                    </Text>
                 </View>
-            </LinearGradient>
-        </TouchableOpacity>
+            </TouchableOpacity>
+
+            {/* Akcje - NOWA SEKCJA Z SERDUSZKIEM */}
+            <View style={styles.actionButtons}>
+                {/* Przycisk polubienia */}
+                <TouchableOpacity
+                    style={[styles.actionButton, liked && styles.actionButtonLiked]}
+                    onPress={handleLike}
+                    disabled={isLiking}
+                >
+                    <Ionicons
+                        name={liked ? "heart" : "heart-outline"}
+                        size={18}
+                        color={liked ? COLORS.white : COLORS.gray}
+                    />
+                    <Text style={[
+                        styles.actionText,
+                        liked && styles.actionTextLiked
+                    ]}>
+                        {likesCount || 0}
+                    </Text>
+                </TouchableOpacity>
+
+                {/* Przycisk komentarza */}
+                <TouchableOpacity
+                    style={styles.actionButton}
+                    onPress={handleComment}
+                >
+                    <Ionicons
+                        name="chatbubble-outline"
+                        size={18}
+                        color={COLORS.gray}
+                    />
+                    <Text style={styles.actionText}>
+                        {commentsCount || 0}
+                    </Text>
+                </TouchableOpacity>
+
+                {/* Przycisk udostępniania */}
+                <TouchableOpacity style={styles.actionButton}>
+                    <Ionicons
+                        name="share-outline"
+                        size={18}
+                        color={COLORS.gray}
+                    />
+                    <Text style={styles.actionText}>Udostępnij</Text>
+                </TouchableOpacity>
+            </View>
+        </View>
     );
 };
 
 const styles = StyleSheet.create({
     container: {
-        marginBottom: 15,
-    },
-    card: {
-        backgroundColor: COLORS.cardBackground,
+        backgroundColor: COLORS.white,
         borderRadius: 16,
-        padding: 20,
-        shadowColor: COLORS.cardShadow,
+        marginBottom: 16,
+        shadowColor: COLORS.black,
         shadowOffset: {
             width: 0,
             height: 2,
         },
         shadowOpacity: 0.1,
         shadowRadius: 8,
-        elevation: 3,
-        borderWidth: 1,
-        borderColor: COLORS.border,
+        elevation: 4,
+        overflow: 'hidden',
     },
     header: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: 12,
+        padding: 16,
+        paddingBottom: 12,
     },
-    headerRight: {
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-    categoryTag: {
+    categoryBadge: {
+        backgroundColor: COLORS.primary,
         paddingHorizontal: 12,
         paddingVertical: 4,
         borderRadius: 12,
@@ -319,88 +294,72 @@ const styles = StyleSheet.create({
         color: COLORS.white,
         fontSize: 12,
         fontWeight: '600',
-        textTransform: 'uppercase',
-    },
-    timestamp: {
-        fontSize: 12,
-        color: COLORS.textLight,
-        fontWeight: '500',
-        marginRight: 12,
-    },
-    favoriteButton: {
-        padding: 4,
     },
     title: {
         fontSize: 18,
-        fontWeight: 'bold',
-        color: COLORS.textPrimary,
+        fontWeight: '700',
+        color: COLORS.black,
+        paddingHorizontal: 16,
         marginBottom: 8,
         lineHeight: 24,
     },
-    preview: {
+    content: {
         fontSize: 14,
-        color: COLORS.textSecondary,
+        color: COLORS.gray,
+        paddingHorizontal: 16,
+        marginBottom: 12,
         lineHeight: 20,
-        marginBottom: 16,
     },
-    footer: {
+    meta: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-    },
-    authorSection: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        flex: 1,
+        paddingHorizontal: 16,
+        paddingBottom: 16,
     },
     author: {
-        fontSize: 14,
-        color: COLORS.textSecondary,
+        fontSize: 12,
+        color: COLORS.gray,
         fontWeight: '500',
-        marginLeft: 6,
     },
-    engagement: {
+    time: {
+        fontSize: 12,
+        color: COLORS.gray,
+    },
+    // NOWE STYLE DLA AKCJI
+    actionButtons: {
+        flexDirection: 'row',
+        justifyContent: 'space-around',
+        paddingVertical: 12,
+        paddingHorizontal: 16,
+        borderTopWidth: 1,
+        borderTopColor: COLORS.lightGray,
+        backgroundColor: COLORS.background,
+    },
+    actionButton: {
         flexDirection: 'row',
         alignItems: 'center',
-    },
-    engagementButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginLeft: 16,
-        paddingVertical: 4,
-        paddingHorizontal: 8,
-        borderRadius: 8,
-    },
-    engagementButtonDisabled: {
-        opacity: 0.6,
-    },
-    engagementText: {
-        fontSize: 14,
-        fontWeight: '500',
-        marginLeft: 4,
-    },
-    commentIconContainer: {
-        position: 'relative',
-        marginRight: 4,
-    },
-    commentBadge: {
-        position: 'absolute',
-        top: -8,
-        right: -8,
-        backgroundColor: COLORS.error,
-        borderRadius: 8,
-        minWidth: 16,
-        height: 16,
-        justifyContent: 'center',
-        alignItems: 'center',
+        paddingVertical: 8,
+        paddingHorizontal: 12,
+        borderRadius: 20,
+        backgroundColor: COLORS.white,
         borderWidth: 1,
-        borderColor: COLORS.white,
+        borderColor: COLORS.lightGray,
+        minWidth: 70,
+        justifyContent: 'center',
     },
-    commentBadgeText: {
+    actionButtonLiked: {
+        backgroundColor: COLORS.red,
+        borderColor: COLORS.red,
+    },
+    actionText: {
+        marginLeft: 6,
+        fontSize: 12,
+        fontWeight: '600',
+        color: COLORS.gray,
+    },
+    actionTextLiked: {
         color: COLORS.white,
-        fontSize: 9,
-        fontWeight: 'bold',
-        textAlign: 'center',
     },
 });
 

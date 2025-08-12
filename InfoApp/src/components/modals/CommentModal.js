@@ -1,4 +1,3 @@
-// src/components/modals/CommentModal.js - Ostateczna naprawa
 import React, { useState, useEffect } from 'react';
 import {
     View,
@@ -37,6 +36,7 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded }) => {
 
     useEffect(() => {
         if (visible && item) {
+            console.log('CommentModal opened for item:', item.id);
             initializeData();
         } else {
             // Reset stanu gdy modal się zamyka
@@ -82,27 +82,44 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded }) => {
         setLoading(true);
         try {
             const postType = item.politician_name ? 'politician_post' : 'news';
+            console.log('Loading comments for:', item.id, postType);
+
             const response = await commentService.fetchComments(item.id, postType);
 
             if (response.success) {
+                console.log('Loaded comments:', response.data.length);
+
                 // Dodaj informacje o polubienieach do każdego komentarza
                 const commentsWithLikes = await Promise.all(
-                    response.data.map(async (comment) => {
-                        const likesResponse = await commentService.getCommentLikesCount(comment.id);
-                        const likedResponse = currentUser
-                            ? await commentService.checkCommentLike(comment.id, currentUser.id)
-                            : { success: false, data: false };
+                    response.data.map(async (commentItem) => {
+                        let likes = 0;
+                        let isLiked = false;
+
+                        // Sprawdź czy istnieją funkcje do polubień
+                        try {
+                            if (commentService.getCommentLikesCount) {
+                                const likesResponse = await commentService.getCommentLikesCount(commentItem.id);
+                                likes = likesResponse.success ? likesResponse.data : 0;
+                            }
+
+                            if (currentUser && commentService.checkCommentLike) {
+                                const likedResponse = await commentService.checkCommentLike(commentItem.id, currentUser.id);
+                                isLiked = likedResponse.success ? likedResponse.data : false;
+                            }
+                        } catch (error) {
+                            console.log('Likes functions not available:', error.message);
+                        }
 
                         return {
-                            ...comment,
-                            likes: likesResponse.success ? likesResponse.data : 0,
-                            isLiked: likedResponse.success ? likedResponse.data : false
+                            ...commentItem,
+                            likes: likes,
+                            isLiked: isLiked
                         };
                     })
                 );
 
                 setComments(commentsWithLikes);
-                setCommentsCount(commentsWithLikes.length); // Ustaw prawdziwą liczbę komentarzy
+                setCommentsCount(commentsWithLikes.length);
             }
         } catch (error) {
             console.error('Error loading comments:', error);
@@ -115,30 +132,60 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded }) => {
         if (!item) return;
 
         const postType = item.politician_name ? 'politician_post' : 'news';
-        const subscription = commentService.subscribeToComments(
-            item.id,
-            postType,
-            (payload) => {
-                console.log('Real-time comment update:', payload);
-                if (payload.eventType === 'INSERT') {
-                    // Dodaj nowy komentarz na żywo
-                    const newComment = {
-                        ...payload.new,
-                        likes: 0,
-                        isLiked: false
-                    };
+        console.log('Setting up real-time for:', item.id, postType);
 
-                    setComments(prev => [newComment, ...prev]);
-                    setCommentsCount(prev => prev + 1);
+        // Sprawdź czy funkcja istnieje
+        if (commentService.subscribeToComments) {
+            const subscription = commentService.subscribeToComments(
+                item.id,
+                postType,
+                (payload) => {
+                    console.log('Real-time comment update:', payload);
+                    if (payload.eventType === 'INSERT') {
+                        // Sprawdź czy to nie jest duplikat tymczasowego komentarza
+                        const newComment = {
+                            ...payload.new,
+                            likes: 0,
+                            isLiked: false
+                        };
 
-                    // Powiadom o zmianie w card
-                    if (onCommentAdded) {
-                        onCommentAdded(item.id, commentsCount + 1);
+                        console.log('Checking for duplicate comment:', newComment.content);
+
+                        setComments(prev => {
+                            // Usuń tymczasowe komentarze o tej samej treści
+                            const filtered = prev.filter(c =>
+                                !(c.isTemp && c.content === newComment.content && c.author_name === newComment.author_name)
+                            );
+
+                            // Sprawdź czy komentarz już nie istnieje
+                            const exists = filtered.some(c => c.id === newComment.id);
+                            if (!exists) {
+                                console.log('Adding real-time comment:', newComment.id);
+                                return [newComment, ...filtered];
+                            }
+
+                            return filtered;
+                        });
+
+                        setCommentsCount(prev => {
+                            const newCount = Math.max(prev, comments.filter(c => !c.isTemp).length + 1);
+                            console.log('Real-time comments count update:', prev, '->', newCount);
+
+                            // Powiadom parent component
+                            if (onCommentAdded) {
+                                console.log('Notifying parent about real-time comment');
+                                onCommentAdded(item.id, newCount);
+                            }
+
+                            return newCount;
+                        });
                     }
                 }
-            }
-        );
-        setCommentSubscription(subscription);
+            );
+            setCommentSubscription(subscription);
+        } else {
+            console.log('Real-time subscriptions not available');
+        }
     };
 
     const formatTime = (timestamp) => {
@@ -173,10 +220,14 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded }) => {
             return;
         }
 
+        const commentContent = comment.trim();
+        const authorName = userName.trim();
+
         try {
             setAddingComment(true);
 
             const postType = item.politician_name ? 'politician_post' : 'news';
+            console.log('Adding comment to:', item.id, postType, 'by:', authorName);
 
             // Zapisz imię użytkownika dla przyszłych komentarzy
             if (userName !== currentUser.displayName) {
@@ -184,36 +235,123 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded }) => {
                 setShowNameInput(false);
             }
 
+            // DODAJ KOMENTARZ NATYCHMIAST DO UI (optymistyczna aktualizacja)
+            const tempComment = {
+                id: `temp-${Date.now()}`,
+                content: commentContent,
+                author_name: authorName,
+                created_at: new Date().toISOString(),
+                likes: 0,
+                isLiked: false,
+                isTemp: true // Oznacz jako tymczasowy
+            };
+
+            console.log('Adding temporary comment to UI:', tempComment);
+            setComments(prev => [tempComment, ...prev]);
+            setCommentsCount(prev => {
+                const newCount = prev + 1;
+                console.log('Temporary update comments count:', prev, '->', newCount);
+
+                // Powiadom parent NATYCHMIAST
+                if (onCommentAdded) {
+                    console.log('Notifying parent about temporary comment');
+                    onCommentAdded(item.id, newCount);
+                }
+
+                return newCount;
+            });
+
+            // Wyczyść formularz natychmiast
+            setComment('');
+
             // Dodaj komentarz do Supabase
             const commentResponse = await commentService.addComment({
                 post_id: item.id,
                 post_type: postType,
-                author_name: userName,
-                content: comment,
+                author_name: authorName,
+                content: commentContent,
             });
 
             if (commentResponse.success) {
-                // Aktualizuj licznik komentarzy w tabeli głównej
-                if (postType === 'news') {
-                    await newsService.updateCommentsCount(item.id, true);
-                } else {
-                    await politicianService.updatePostCommentsCount(item.id, true);
+                console.log('Comment added to database successfully:', commentResponse.data);
+
+                // BEZPOŚREDNIA AKTUALIZACJA LICZNIKA W BAZIE DANYCH
+                try {
+                    if (postType === 'news') {
+                        // Bezpośrednia aktualizacja licznika dla newsów
+                        const { error: updateError } = await supabase
+                            .from('infoapp_news')
+                            .update({
+                                comments_count: supabase.raw('COALESCE(comments_count, 0) + 1')
+                            })
+                            .eq('id', item.id);
+
+                        if (updateError) {
+                            console.error('Error updating news comments count:', updateError);
+                        } else {
+                            console.log('News comments count updated successfully');
+                        }
+                    } else {
+                        // Bezpośrednia aktualizacja licznika dla wpisów polityków
+                        const { error: updateError } = await supabase
+                            .from('politician_posts')
+                            .update({
+                                comments_count: supabase.raw('COALESCE(comments_count, 0) + 1')
+                            })
+                            .eq('id', item.id);
+
+                        if (updateError) {
+                            console.error('Error updating politician post comments count:', updateError);
+                        } else {
+                            console.log('Politician post comments count updated successfully');
+                        }
+                    }
+                } catch (dbError) {
+                    console.error('Database update error:', dbError);
                 }
 
                 // Aktualizuj statystyki użytkownika
                 await userService.incrementComments();
 
-                // Wyczyść formularz
-                setComment('');
-
                 Alert.alert('Sukces', 'Komentarz został dodany!');
 
-                // Nie trzeba ręcznie dodawać komentarza - real-time subscription to zrobi
+                // Nie usuwaj tymczasowego komentarza - zostaw go, real-time może go zastąpić lub nie
+                // Jeśli real-time nie działa, komentarz pozostanie jako tymczasowy ale będzie widoczny
+
+                // Fallback: Jeśli nie ma real-time, zamień tymczasowy na prawdziwy
+                setTimeout(() => {
+                    setComments(prev => prev.map(c =>
+                        c.isTemp && c.content === commentContent && c.author_name === authorName
+                            ? { ...commentResponse.data, likes: 0, isLiked: false }
+                            : c
+                    ));
+                }, 1000); // Daj czas real-time na zadziałanie
+
             } else {
+                console.error('Failed to add comment to database');
+                // Usuń tymczasowy komentarz w przypadku błędu
+                setComments(prev => prev.filter(c => !(c.isTemp && c.content === commentContent)));
+                setCommentsCount(prev => Math.max(0, prev - 1));
+
+                // Cofnij aktualizację parent component
+                if (onCommentAdded) {
+                    onCommentAdded(item.id, commentsCount);
+                }
+
                 Alert.alert('Błąd', 'Nie udało się dodać komentarza');
             }
         } catch (error) {
             console.error('Error adding comment:', error);
+
+            // Usuń tymczasowy komentarz w przypadku błędu
+            setComments(prev => prev.filter(c => !(c.isTemp && c.content === commentContent)));
+            setCommentsCount(prev => Math.max(0, prev - 1));
+
+            // Cofnij aktualizację parent component
+            if (onCommentAdded) {
+                onCommentAdded(item.id, commentsCount);
+            }
+
             Alert.alert('Błąd', 'Wystąpił problem z dodawaniem komentarza');
         } finally {
             setAddingComment(false);
@@ -224,6 +362,16 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded }) => {
         if (!currentUser) {
             Alert.alert('Info', 'Funkcja polubień wymaga zalogowania');
             return;
+        }
+
+        // Sprawdź czy funkcja polubień istnieje
+        if (!commentService.toggleCommentLike) {
+            Alert.alert('Info', 'Funkcja polubień komentarzy nie jest jeszcze dostępna');
+            return;
+        }
+
+        if (commentItem.isTemp) {
+            return; // Nie można polubić tymczasowych komentarzy
         }
 
         try {
@@ -310,11 +458,11 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded }) => {
                         {/* Statystyki posta */}
                         <View style={styles.postStats}>
                             <View style={styles.statItem}>
-                                <Ionicons name="heart" size={16} color={COLORS.like} />
+                                <Ionicons name="heart" size={16} color={COLORS.red} />
                                 <Text style={styles.statText}>{item.likes_count || 0} polubień</Text>
                             </View>
                             <View style={styles.statItem}>
-                                <Ionicons name="chatbubble" size={16} color={COLORS.comment} />
+                                <Ionicons name="chatbubble" size={16} color={COLORS.primary} />
                                 <Text style={styles.statText}>{commentsCount} komentarzy</Text>
                             </View>
                         </View>
@@ -328,42 +476,63 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded }) => {
                             </View>
                         ) : comments.length > 0 ? (
                             comments.map((commentItem) => (
-                                <View key={commentItem.id} style={styles.commentItem}>
+                                <View key={commentItem.id} style={[
+                                    styles.commentItem,
+                                    commentItem.isTemp && styles.tempComment
+                                ]}>
                                     <View style={styles.commentHeader}>
                                         <View style={styles.commentAvatar}>
-                                            <Ionicons name="person" size={20} color={COLORS.primary} />
-                                        </View>
-                                        <View style={styles.commentInfo}>
-                                            <Text style={styles.commentAuthor}>{commentItem.author_name}</Text>
-                                            <Text style={styles.commentTime}>
-                                                {formatTime(commentItem.created_at)}
+                                            <Text style={styles.commentAvatarText}>
+                                                {commentItem.author_name.charAt(0).toUpperCase()}
                                             </Text>
                                         </View>
-                                        <TouchableOpacity
-                                            style={styles.likeButton}
-                                            onPress={() => likeComment(commentItem)}
-                                        >
-                                            <Ionicons
-                                                name={commentItem.isLiked ? "heart" : "heart-outline"}
-                                                size={16}
-                                                color={commentItem.isLiked ? COLORS.like : COLORS.gray}
-                                            />
+                                        <View style={styles.commentContent}>
+                                            <View style={styles.commentMeta}>
+                                                <Text style={styles.commentAuthor}>{commentItem.author_name}</Text>
+                                                <Text style={styles.commentTime}>
+                                                    {commentItem.isTemp ? 'Wysłano' : formatTime(commentItem.created_at)}
+                                                </Text>
+                                                {commentItem.isTemp && (
+                                                    <Ionicons name="checkmark-circle" size={14} color={COLORS.green} />
+                                                )}
+                                            </View>
                                             <Text style={[
-                                                styles.likeCount,
-                                                { color: commentItem.isLiked ? COLORS.like : COLORS.gray }
+                                                styles.commentText,
+                                                commentItem.isTemp && styles.tempCommentText
                                             ]}>
-                                                {commentItem.likes}
+                                                {commentItem.content}
                                             </Text>
-                                        </TouchableOpacity>
+
+                                            {/* Polubienia komentarza */}
+                                            {!commentItem.isTemp && (
+                                                <View style={styles.commentActions}>
+                                                    <TouchableOpacity
+                                                        style={styles.commentLikeButton}
+                                                        onPress={() => likeComment(commentItem)}
+                                                    >
+                                                        <Ionicons
+                                                            name={commentItem.isLiked ? "heart" : "heart-outline"}
+                                                            size={16}
+                                                            color={commentItem.isLiked ? COLORS.red : COLORS.gray}
+                                                        />
+                                                        <Text style={[
+                                                            styles.commentLikeText,
+                                                            commentItem.isLiked && { color: COLORS.red }
+                                                        ]}>
+                                                            {commentItem.likes || 0}
+                                                        </Text>
+                                                    </TouchableOpacity>
+                                                </View>
+                                            )}
+                                        </View>
                                     </View>
-                                    <Text style={styles.commentText}>{commentItem.content}</Text>
                                 </View>
                             ))
                         ) : (
                             <View style={styles.emptyState}>
-                                <Ionicons name="chatbubble-outline" size={48} color={COLORS.gray} />
-                                <Text style={styles.emptyStateText}>
-                                    Brak komentarzy. Bądź pierwszy!
+                                <Ionicons name="chatbubble-outline" size={64} color={COLORS.gray} />
+                                <Text style={styles.emptyStateTitle}>
+                                    Bądź pierwszy!
                                 </Text>
                                 <Text style={styles.emptyStateSubtext}>
                                     Twój komentarz może rozpocząć dyskusję
@@ -409,7 +578,7 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded }) => {
                                 disabled={!comment.trim() || !userName.trim() || addingComment}
                             >
                                 {addingComment ? (
-                                    <Ionicons name="hourglass" size={20} color={COLORS.white} />
+                                    <Ionicons name="hourglass-outline" size={20} color={COLORS.white} />
                                 ) : (
                                     <Ionicons name="send" size={20} color={COLORS.white} />
                                 )}
@@ -467,7 +636,7 @@ const styles = StyleSheet.create({
         margin: 20,
         padding: 20,
         borderRadius: 16,
-        shadowColor: COLORS.cardShadow,
+        shadowColor: COLORS.black,
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.1,
         shadowRadius: 8,
@@ -476,12 +645,12 @@ const styles = StyleSheet.create({
     originalTitle: {
         fontSize: 18,
         fontWeight: 'bold',
-        color: COLORS.textPrimary,
+        color: COLORS.black,
         marginBottom: 8,
     },
     originalContent: {
         fontSize: 14,
-        color: COLORS.textSecondary,
+        color: COLORS.gray,
         lineHeight: 20,
         marginBottom: 12,
     },
@@ -498,7 +667,7 @@ const styles = StyleSheet.create({
     },
     originalTime: {
         fontSize: 12,
-        color: COLORS.textLight,
+        color: COLORS.gray,
     },
     postStats: {
         flexDirection: 'row',
@@ -513,7 +682,7 @@ const styles = StyleSheet.create({
     },
     statText: {
         fontSize: 14,
-        color: COLORS.textSecondary,
+        color: COLORS.gray,
         marginLeft: 6,
         fontWeight: '500',
     },
@@ -526,7 +695,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     loadingText: {
-        color: COLORS.textSecondary,
+        color: COLORS.gray,
         fontSize: 16,
     },
     commentItem: {
@@ -534,71 +703,94 @@ const styles = StyleSheet.create({
         padding: 16,
         borderRadius: 12,
         marginBottom: 12,
-        shadowColor: COLORS.cardShadow,
+        shadowColor: COLORS.black,
         shadowOffset: { width: 0, height: 1 },
         shadowOpacity: 0.05,
         shadowRadius: 4,
         elevation: 2,
     },
+    tempComment: {
+        backgroundColor: COLORS.lightGray,
+        borderLeftWidth: 3,
+        borderLeftColor: COLORS.green,
+    },
     commentHeader: {
         flexDirection: 'row',
-        alignItems: 'center',
+        alignItems: 'flex-start',
         marginBottom: 8,
     },
     commentAvatar: {
         width: 36,
         height: 36,
         borderRadius: 18,
-        backgroundColor: COLORS.lightGray,
+        backgroundColor: COLORS.primary,
         justifyContent: 'center',
         alignItems: 'center',
         marginRight: 12,
     },
-    commentInfo: {
+    commentAvatarText: {
+        color: COLORS.white,
+        fontWeight: 'bold',
+        fontSize: 16,
+    },
+    commentContent: {
         flex: 1,
+    },
+    commentMeta: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 6,
+        gap: 8,
     },
     commentAuthor: {
         fontSize: 14,
         fontWeight: '600',
-        color: COLORS.textPrimary,
+        color: COLORS.black,
     },
     commentTime: {
         fontSize: 12,
-        color: COLORS.textLight,
-        marginTop: 2,
-    },
-    likeButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        padding: 8,
-        borderRadius: 8,
-    },
-    likeCount: {
-        fontSize: 12,
-        marginLeft: 4,
-        fontWeight: '600',
+        color: COLORS.gray,
     },
     commentText: {
         fontSize: 14,
-        color: COLORS.textSecondary,
+        color: COLORS.black,
         lineHeight: 20,
-        marginLeft: 48,
+        marginBottom: 8,
+    },
+    tempCommentText: {
+        color: COLORS.black,
+    },
+    commentActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    commentLikeButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        paddingVertical: 4,
+        paddingHorizontal: 8,
+        borderRadius: 12,
+    },
+    commentLikeText: {
+        fontSize: 12,
+        color: COLORS.gray,
+        fontWeight: '500',
     },
     emptyState: {
         alignItems: 'center',
         paddingVertical: 60,
     },
-    emptyStateText: {
-        fontSize: 16,
-        color: COLORS.textSecondary,
+    emptyStateTitle: {
+        fontSize: 20,
+        fontWeight: 'bold',
+        color: COLORS.black,
         marginTop: 16,
-        textAlign: 'center',
-        fontWeight: '500',
+        marginBottom: 8,
     },
     emptyStateSubtext: {
-        fontSize: 14,
-        color: COLORS.textLight,
-        marginTop: 8,
+        fontSize: 16,
+        color: COLORS.gray,
         textAlign: 'center',
     },
     inputContainer: {
@@ -607,7 +799,7 @@ const styles = StyleSheet.create({
         paddingTop: 16,
         paddingBottom: 20,
         borderTopWidth: 1,
-        borderTopColor: COLORS.border,
+        borderTopColor: COLORS.lightGray,
     },
     nameInputContainer: {
         marginBottom: 12,
@@ -618,15 +810,20 @@ const styles = StyleSheet.create({
         paddingHorizontal: 16,
         paddingVertical: 12,
         fontSize: 16,
-        color: COLORS.textPrimary,
+        color: COLORS.black,
         borderWidth: 2,
         borderColor: COLORS.primary,
     },
     nameHint: {
         fontSize: 12,
-        color: COLORS.textLight,
+        color: COLORS.gray,
         marginTop: 4,
         marginLeft: 4,
+    },
+    commentInputRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-end',
+        marginBottom: 8,
     },
     commentInputRow: {
         flexDirection: 'row',
@@ -642,7 +839,7 @@ const styles = StyleSheet.create({
         fontSize: 16,
         maxHeight: 100,
         marginRight: 12,
-        color: COLORS.textPrimary,
+        color: COLORS.black,
     },
     sendButton: {
         backgroundColor: COLORS.primary,
@@ -663,7 +860,7 @@ const styles = StyleSheet.create({
     },
     characterCount: {
         fontSize: 12,
-        color: COLORS.textLight,
+        color: COLORS.gray,
     },
     changeNameButton: {
         paddingVertical: 4,
