@@ -1,4 +1,4 @@
-// src/screens/ProfileScreen.js - Z prawdziwymi statystykami użytkownika
+// src/screens/ProfileScreen.js - Z prawdziwą nawigacją używając istniejących komponentów
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -8,9 +8,19 @@ import { COLORS } from '../styles/colors';
 import { APP_CONFIG } from '../utils/constants';
 import { userService } from '../services/userService';
 
+import NotificationSettingsScreen from './profile/NotificationSettingsScreen';
+import FavoriteArticlesScreen from './profile/FavoriteArticlesScreen';
+import ReadingHistoryScreen from './profile/ReadingHistoryScreen';
+import DataManagementScreen from './profile/DataManagementScreen';
+import AboutAppScreen from './profile/AboutAppScreen';
+import HelpSupportScreen from './profile/HelpSupportScreen';
+import ShareAppScreen from './profile/ShareAppScreen';
+import RateAppScreen from './profile/RateAppScreen';
+
 const ProfileScreen = () => {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [activeScreen, setActiveScreen] = useState('main'); // main, NotificationSettings, FavoriteArticles, etc.
 
     useEffect(() => {
         loadUserData();
@@ -27,40 +37,20 @@ const ProfileScreen = () => {
         }
     };
 
-    const handleMenuPress = (title) => {
-        Alert.alert(title, `Funkcja "${title}" będzie dostępna w przyszłej wersji aplikacji.`, [
-            { text: 'OK', style: 'default' }
-        ]);
+    const navigateToScreen = (screenName) => {
+        setActiveScreen(screenName);
+    };
+
+    const navigateBack = () => {
+        setActiveScreen('main');
     };
 
     const handleShare = () => {
-        Alert.alert(
-            'Podziel się aplikacją',
-            'Pobierz InfoApp i bądź na bieżąco z najważniejszymi newsami!\n\n📱 Dostępna za darmo w sklepach z aplikacjami.',
-            [
-                { text: 'Anuluj', style: 'cancel' },
-                { text: 'Udostępnij', onPress: () => console.log('Udostępnianie...') }
-            ]
-        );
+        setActiveScreen('ShareApp');
     };
 
     const handleRate = () => {
-        Alert.alert(
-            'Oceń aplikację',
-            'Czy podoba Ci się nasza aplikacja? Twoja opinia jest dla nas bardzo ważna!',
-            [
-                { text: 'Może później', style: 'cancel' },
-                { text: 'Oceń teraz', onPress: () => console.log('Przekierowanie do sklepu...') }
-            ]
-        );
-    };
-
-    const handleAbout = () => {
-        Alert.alert(
-            'O aplikacji',
-            `${APP_CONFIG.NAME} v${APP_CONFIG.VERSION}\n\n${APP_CONFIG.DESCRIPTION}\n\nDeweloper: Twoja Firma\nKontakt: ${APP_CONFIG.SUPPORT_EMAIL}\n\nDziękujemy za korzystanie z naszej aplikacji! 🙏`,
-            [{ text: 'OK' }]
-        );
+        setActiveScreen('RateApp');
     };
 
     const handleLogin = () => {
@@ -81,7 +71,8 @@ const ProfileScreen = () => {
             [
                 { text: 'Anuluj', style: 'cancel' },
                 { text: 'Eksportuj dane', onPress: exportUserData },
-                { text: 'Resetuj dane', style: 'destructive', onPress: confirmReset }
+                { text: 'Resetuj dane', style: 'destructive', onPress: confirmReset },
+                { text: 'Zarządzaj danymi', onPress: () => navigateToScreen('DataManagement') }
             ]
         );
     };
@@ -112,99 +103,113 @@ const ProfileScreen = () => {
         Alert.alert('Sukces', 'Dane zostały zresetowane. Zostałeś oznaczony jako nowy użytkownik.');
     };
 
-    const menuItems = [
-        {
-            id: 1,
-            title: 'Ustawienia powiadomień',
-            icon: 'notifications',
-            onPress: () => handleMenuPress('Ustawienia powiadomień'),
-            description: 'Zarządzaj powiadomieniami'
-        },
-        {
-            id: 2,
-            title: 'Ulubione artykuły',
-            icon: 'heart',
-            onPress: () => handleMenuPress('Ulubione artykuły'),
-            description: 'Zobacz zapisane artykuły'
-        },
-        {
-            id: 3,
-            title: 'Historia czytania',
-            icon: 'time',
-            onPress: () => handleMenuPress('Historia czytania'),
-            description: 'Ostatnio przeczytane'
-        },
-        {
-            id: 4,
-            title: 'Zarządzanie danymi',
-            icon: 'cloud-download',
-            onPress: handleDataManagement,
-            description: 'Eksportuj lub resetuj dane'
-        },
-        {
-            id: 5,
-            title: 'Podziel się aplikacją',
-            icon: 'share',
-            onPress: handleShare,
-            description: 'Poleć znajomym'
-        },
-        {
-            id: 6,
-            title: 'Oceń aplikację',
-            icon: 'star',
-            onPress: handleRate,
-            description: 'Twoja opinia się liczy'
-        },
-        {
-            id: 7,
-            title: 'Pomoc i wsparcie',
-            icon: 'help-circle',
-            onPress: () => handleMenuPress('Pomoc i wsparcie'),
-            description: 'Skontaktuj się z nami'
-        },
-        {
-            id: 8,
-            title: 'O aplikacji',
-            icon: 'information-circle',
-            onPress: handleAbout,
-            description: 'Informacje o wersji'
-        },
-    ];
+    // Renderowanie różnych ekranów
+    const renderCurrentScreen = () => {
+        switch (activeScreen) {
+            case 'NotificationSettings':
+                return <NotificationSettingsScreen />;
+            case 'FavoriteArticles':
+                return <FavoriteArticlesScreen />;
+            case 'ReadingHistory':
+                return <ReadingHistoryScreen />;
+            case 'DataManagement':
+                return <DataManagementScreen />;
+            case 'ShareApp':
+                return <ShareAppScreen />;
+            case 'RateApp':
+                return <RateAppScreen />;
+            case 'HelpSupport':
+                return <HelpSupportScreen />;
+            case 'AboutApp':
+                return <AboutAppScreen />;
+            default:
+                return renderMainScreen();
+        }
+    };
 
-    const renderMenuItem = (item) => (
-        <TouchableOpacity
-            key={item.id}
-            style={styles.menuItem}
-            onPress={item.onPress}
-            activeOpacity={0.7}
-        >
-            <View style={styles.menuItemLeft}>
-                <View style={styles.iconContainer}>
-                    <Ionicons name={item.icon} size={22} color={COLORS.primary} />
-                </View>
-                <View style={styles.menuItemTextContainer}>
-                    <Text style={styles.menuItemText}>{item.title}</Text>
-                    {item.description && (
-                        <Text style={styles.menuItemDescription}>{item.description}</Text>
-                    )}
-                </View>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={COLORS.gray} />
-        </TouchableOpacity>
-    );
+    const renderMainScreen = () => {
+        const menuItems = [
+            {
+                id: 1,
+                title: 'Ustawienia powiadomień',
+                icon: 'notifications',
+                onPress: () => navigateToScreen('NotificationSettings'),
+                description: 'Zarządzaj powiadomieniami'
+            },
+            {
+                id: 2,
+                title: 'Ulubione artykuły',
+                icon: 'heart',
+                onPress: () => navigateToScreen('FavoriteArticles'),
+                description: 'Zobacz zapisane artykuły'
+            },
+            {
+                id: 3,
+                title: 'Historia czytania',
+                icon: 'time',
+                onPress: () => navigateToScreen('ReadingHistory'),
+                description: 'Ostatnio przeczytane'
+            },
+            {
+                id: 4,
+                title: 'Zarządzanie danymi',
+                icon: 'cloud-download',
+                onPress: handleDataManagement,
+                description: 'Eksportuj lub resetuj dane'
+            },
+            {
+                id: 5,
+                title: 'Podziel się aplikacją',
+                icon: 'share',
+                onPress: handleShare,
+                description: 'Poleć znajomym'
+            },
+            {
+                id: 6,
+                title: 'Oceń aplikację',
+                icon: 'star',
+                onPress: handleRate,
+                description: 'Twoja opinia się liczy'
+            },
+            {
+                id: 7,
+                title: 'Pomoc i wsparcie',
+                icon: 'help-circle',
+                onPress: () => navigateToScreen('HelpSupport'),
+                description: 'Skontaktuj się z nami'
+            },
+            {
+                id: 8,
+                title: 'O aplikacji',
+                icon: 'information-circle',
+                onPress: () => navigateToScreen('AboutApp'),
+                description: 'Informacje o wersji'
+            },
+        ];
 
-    if (loading) {
-        return (
-            <SafeAreaView style={styles.container}>
-                <View style={styles.loadingContainer}>
-                    <Text style={styles.loadingText}>Ładowanie profilu...</Text>
+        const renderMenuItem = (item) => (
+            <TouchableOpacity
+                key={item.id}
+                style={styles.menuItem}
+                onPress={item.onPress}
+                activeOpacity={0.7}
+            >
+                <View style={styles.menuItemLeft}>
+                    <View style={styles.iconContainer}>
+                        <Ionicons name={item.icon} size={22} color={COLORS.primary} />
+                    </View>
+                    <View style={styles.menuItemTextContainer}>
+                        <Text style={styles.menuItemText}>{item.title}</Text>
+                        {item.description && (
+                            <Text style={styles.menuItemDescription}>{item.description}</Text>
+                        )}
+                    </View>
                 </View>
-            </SafeAreaView>
+                <Ionicons name="chevron-forward" size={18} color={COLORS.gray} />
+            </TouchableOpacity>
         );
-    }
 
-    return (
-        <SafeAreaView style={styles.container}>
+        return (
             <ScrollView showsVerticalScrollIndicator={false}>
                 <LinearGradient
                     colors={[COLORS.primary, COLORS.secondary]}
@@ -273,6 +278,58 @@ const ProfileScreen = () => {
                     )}
                 </View>
             </ScrollView>
+        );
+    };
+
+    const getScreenTitle = () => {
+        switch (activeScreen) {
+            case 'NotificationSettings':
+                return 'Ustawienia powiadomień';
+            case 'FavoriteArticles':
+                return 'Ulubione artykuły';
+            case 'ReadingHistory':
+                return 'Historia czytania';
+            case 'DataManagement':
+                return 'Zarządzanie danymi';
+            case 'ShareApp':
+                return 'Podziel się aplikacją';
+            case 'RateApp':
+                return 'Oceń aplikację';
+            case 'HelpSupport':
+                return 'Pomoc i wsparcie';
+            case 'AboutApp':
+                return 'O aplikacji';
+            default:
+                return '';
+        }
+    };
+
+    if (loading) {
+        return (
+            <SafeAreaView style={styles.container}>
+                <View style={styles.loadingContainer}>
+                    <Text style={styles.loadingText}>Ładowanie profilu...</Text>
+                </View>
+            </SafeAreaView>
+        );
+    }
+
+    return (
+        <SafeAreaView style={styles.container}>
+            {activeScreen !== 'main' && (
+                <View style={styles.navigationHeader}>
+                    <TouchableOpacity
+                        style={styles.backButton}
+                        onPress={navigateBack}
+                        activeOpacity={0.7}
+                    >
+                        <Ionicons name="arrow-back" size={24} color={COLORS.white} />
+                    </TouchableOpacity>
+                    <Text style={styles.navigationTitle}>{getScreenTitle()}</Text>
+                    <View style={styles.headerSpacer} />
+                </View>
+            )}
+            {renderCurrentScreen()}
         </SafeAreaView>
     );
 };
@@ -290,6 +347,27 @@ const styles = StyleSheet.create({
     loadingText: {
         fontSize: 16,
         color: COLORS.textSecondary,
+    },
+    navigationHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: COLORS.primary,
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        justifyContent: 'space-between',
+    },
+    backButton: {
+        padding: 8,
+    },
+    navigationTitle: {
+        flex: 1,
+        fontSize: 18,
+        fontWeight: '600',
+        color: COLORS.white,
+        textAlign: 'center',
+    },
+    headerSpacer: {
+        width: 40, // Same width as back button to center title
     },
     header: {
         paddingVertical: 40,
