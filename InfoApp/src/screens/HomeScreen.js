@@ -41,7 +41,6 @@ const HomeScreen = () => {
 
     useEffect(() => {
         loadData();
-        setupRealtimeSubscription();
 
         return () => {
             if (newsSubscription) {
@@ -82,28 +81,6 @@ const HomeScreen = () => {
         }
     };
 
-    const setupRealtimeSubscription = () => {
-        const subscription = newsService.subscribeToNews((payload) => {
-            console.log('Real-time update:', payload);
-            if (payload.eventType === 'INSERT') {
-                setNews(prev => [payload.new, ...prev.slice(0, 4)]);
-                setOriginalNews(prev => [payload.new, ...prev.slice(0, 4)]);
-            } else if (payload.eventType === 'UPDATE') {
-                // Aktualizuj liczniki w czasie rzeczywistym
-                setNews(prev =>
-                    prev.map(item =>
-                        item.id === payload.new.id ? payload.new : item
-                    )
-                );
-                setOriginalNews(prev =>
-                    prev.map(item =>
-                        item.id === payload.new.id ? payload.new : item
-                    )
-                );
-            }
-        });
-        setNewsSubscription(subscription);
-    };
 
     const handleSearchDebounced = () => {
         // Wyczyść poprzedni timeout
@@ -190,37 +167,6 @@ const HomeScreen = () => {
         );
     };
 
-    const handleLike = async (postId, isLiked, postType = 'news') => {
-        try {
-            if (postType === 'news') {
-                setNews(prev =>
-                    prev.map(item =>
-                        item.id === postId
-                            ? { ...item, likes_count: (item.likes_count || 0) + (isLiked ? 1 : -1) }
-                            : item
-                    )
-                );
-                setOriginalNews(prev =>
-                    prev.map(item =>
-                        item.id === postId
-                            ? { ...item, likes_count: (item.likes_count || 0) + (isLiked ? 1 : -1) }
-                            : item
-                    )
-                );
-            } else {
-                // Optymistyczna aktualizacja UI dla wpisów polityków
-                setPoliticianPosts(prev =>
-                    prev.map(item =>
-                        item.id === postId
-                            ? { ...item, likes_count: (item.likes_count || 0) + (isLiked ? 1 : -1) }
-                            : item
-                    )
-                );
-            }
-        } catch (error) {
-            console.error('Error updating like in UI:', error);
-        }
-    };
 
     const clearSearch = () => {
         setSearchQuery('');
@@ -304,7 +250,6 @@ const HomeScreen = () => {
                                 key={item.id}
                                 news={item}
                                 onPress={() => openComments(item)}
-                                onLike={handleLike}
                                 onComment={() => openComments(item)}
                             />
                         ))
@@ -339,7 +284,6 @@ const HomeScreen = () => {
                                     key={item.id}
                                     post={item}
                                     onPress={() => openComments(item, 'politician_post')}
-                                    onLike={handleLike}
                                     onComment={() => openComments(item, 'politician_post')}
                                 />
                             ))

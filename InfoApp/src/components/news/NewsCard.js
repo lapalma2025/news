@@ -43,7 +43,6 @@ const NewsCard = ({ news, onPress, onComment, onLike, isLiked = false }) => {
 
     useEffect(() => {
         initializeCard();
-        setupRealtimeSubscription();
 
         return () => {
             if (subscription) {
@@ -80,17 +79,7 @@ const NewsCard = ({ news, onPress, onComment, onLike, isLiked = false }) => {
         }
     };
 
-    const setupRealtimeSubscription = () => {
-        const sub = newsService.subscribeToNews((payload) => {
-            if (payload.eventType === 'UPDATE' && payload.new.id === news.id) {
-                console.log('NewsCard: Real-time update received', payload.new);
-                // Aktualizuj liczniki w czasie rzeczywistym
-                setLikesCount(payload.new.likes_count || 0);
-                setCommentsCount(payload.new.comments_count || 0);
-            }
-        });
-        setSubscription(sub);
-    };
+
 
     // TYLKO deleguj do parent - ZERO lokalnej logiki API
     // W NewsCard.js - ZASTĄP handleLike() tym prostym kodem:
@@ -103,28 +92,13 @@ const NewsCard = ({ news, onPress, onComment, onLike, isLiked = false }) => {
 
         console.log('NewsCard: Delegating to parent - news.id:', news.id, 'current liked:', liked);
 
-        // ❌ USUŃ CAŁĄ LOGIKĘ API - zostaw tylko delegację:
-        /*
-        // Usuń to wszystko:
-        const newLikedState = !liked;
-        const newLikesCount = newLikedState ? likesCount + 1 : likesCount - 1;
-        setLiked(newLikedState);
-        setLikesCount(newLikesCount);
-        
-        try {
-            const response = await newsService.toggleLike(news.id, currentUser.id, liked);
-            // ... cała reszta logiki
-        }
-        */
 
-        // ✅ ZOSTAW TYLKO TO - cała logika w NewsScreen:
         if (onLike) {
             onLike(news.id, !liked);
         }
     };
 
     const handleComment = async () => {
-        // Dodaj do historii czytania
         try {
             await userService.addToReadHistory(news.id, news.title, 'news');
         } catch (error) {

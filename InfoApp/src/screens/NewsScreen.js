@@ -64,8 +64,6 @@ const NewsScreen = () => {
 
     useEffect(() => {
         loadNews();
-        setupRealtimeSubscription();
-
         return () => {
             if (newsSubscription) {
                 newsService.unsubscribeFromNews(newsSubscription);
@@ -152,25 +150,6 @@ const NewsScreen = () => {
         }
     };
 
-    const setupRealtimeSubscription = () => {
-        const subscription = newsService.subscribeToNews((payload) => {
-            console.log('NewsScreen: Real-time news update:', payload);
-            if (payload.eventType === 'INSERT') {
-                setNews(prev => [payload.new, ...prev]);
-            } else if (payload.eventType === 'UPDATE') {
-                setNews(prev =>
-                    prev.map(item =>
-                        item.id === payload.new.id ? { ...item, ...payload.new } : item
-                    )
-                );
-            }
-        });
-        setNewsSubscription(subscription);
-    };
-
-    // W NewsScreen.js - zostaw tę funkcję jak była, ale dodaj log:
-    // W NewsScreen.js - ZASTĄP handleLike() tym:
-
     const handleLike = async (newsId, shouldLike) => {
         console.log('🎯 NewsScreen handleLike - MAIN LOGIC:', newsId, shouldLike);
 
@@ -182,45 +161,63 @@ const NewsScreen = () => {
             }
 
             const currentNews = news.find(item => item.id === newsId);
-            if (!currentNews) return;
+            if (!currentNews) {
+                console.error('❌ NEWS NOT FOUND for ID:', newsId);
+                return;
+            }
+
+            console.log('📝 BEFORE - currentNews:', {
+                id: currentNews.id,
+                likes: currentNews.likes_count,
+                isLiked: currentNews.isLikedByUser
+            });
 
             const currentIsLiked = currentNews.isLikedByUser || false;
-            const newLikesCount = shouldLike
-                ? (currentNews.likes_count || 0) + 1
-                : Math.max((currentNews.likes_count || 0) - 1, 0);
 
-            // Optymistyczna aktualizacja UI
-            setNews(prev =>
-                prev.map(item =>
-                    item.id === newsId
-                        ? {
-                            ...item,
-                            likes_count: newLikesCount,
-                            isLikedByUser: shouldLike
-                        }
-                        : item
-                )
-            );
-
-            // ❌ USUŃ TĘ LINIĘ - to powoduje podwójną aktualizację:
-            // await newsService.updateLikesCount(newsId, shouldLike);
-
-            // ✅ ZOSTAW TYLKO TO - toggleLike() już aktualizuje licznik:
             const response = await newsService.toggleLike(newsId, user.id, currentIsLiked);
 
-            if (!response.success) {
-                // Rollback w przypadku błędu
-                setNews(prev =>
-                    prev.map(item =>
-                        item.id === newsId
-                            ? {
-                                ...item,
-                                likes_count: currentNews.likes_count,
-                                isLikedByUser: currentIsLiked
+            if (response.success) {
+                console.log('📊 Fetching fresh data after toggleLike...');
+
+                const { data: freshData, error } = await supabase
+                    .from('infoapp_news')
+                    .select('likes_count')
+                    .eq('id', newsId)
+                    .single();
+
+                if (!error && freshData) {
+                    console.log('📊 Fresh likes count from DB:', freshData.likes_count);
+                    console.log('📊 Updating item with ID:', newsId);
+
+                    setNews(prev => {
+                        const updated = prev.map(item => {
+                            if (item.id === newsId) {
+                                console.log('📊 FOUND ITEM TO UPDATE:', item.id);
+                                return {
+                                    ...item,
+                                    likes_count: freshData.likes_count,
+                                    isLikedByUser: shouldLike
+                                };
                             }
-                            : item
-                    )
-                );
+                            return item;
+                        });
+
+                        // Sprawdź czy rzeczywiście znalazł item
+                        const updatedItem = updated.find(item => item.id === newsId);
+                        console.log('📊 AFTER UPDATE - item:', {
+                            id: updatedItem?.id,
+                            likes: updatedItem?.likes_count,
+                            isLiked: updatedItem?.isLikedByUser
+                        });
+
+                        return updated;
+                    });
+
+                    console.log('📊 UI updated with fresh data');
+                } else {
+                    console.error('📊 Error fetching fresh data:', error);
+                }
+            } else {
                 Alert.alert('Błąd', 'Nie udało się zaktualizować polubienia');
             }
         } catch (error) {
@@ -228,6 +225,9 @@ const NewsScreen = () => {
             Alert.alert('Błąd', 'Wystąpił problem z polubienieм');
         }
     };
+
+    // ❓ SPRAWDŹ CZY MASZ ten kod w swoim NewsScreen.js?
+    // Jeśli nie ma tej części z pobieraniem fresh data, to dlatego UI się nie aktualizuje!
 
     const handleLikeUpdate = (postId, newLikesCount, isLiked) => {
         console.log('🔔 NewsScreen handleLikeUpdate called!');
