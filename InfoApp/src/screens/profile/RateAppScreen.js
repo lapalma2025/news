@@ -1,5 +1,5 @@
-// src/screens/profile/RateAppScreen.js
-import React, { useState } from 'react';
+// src/screens/profile/RateAppScreen.js - Z połączeniem do bazy danych
+import React, { useState, useEffect } from 'react';
 import {
     View,
     Text,
@@ -9,17 +9,91 @@ import {
     TextInput,
     Alert,
     Linking,
+    Platform,
+    ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../../styles/colors';
 import { APP_CONFIG } from '../../utils/constants';
+import { userService } from '../../services/userService';
+import { supabase } from '../../services/supabaseClient';
 
 const RateAppScreen = () => {
     const [selectedRating, setSelectedRating] = useState(0);
     const [feedback, setFeedback] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [loading, setLoading] = useState(true);
+    const [user, setUser] = useState(null);
+    const [existingRating, setExistingRating] = useState(null);
+    const [appStats, setAppStats] = useState(null);
+
+    useEffect(() => {
+        initializeRatingScreen();
+    }, []);
+
+    const initializeRatingScreen = async () => {
+        try {
+            // Pobierz aktualnego użytkownika
+            const currentUser = await userService.getCurrentUser();
+            setUser(currentUser);
+
+            // Pobierz statystyki aplikacji
+            await loadAppStats();
+
+            // Sprawdź czy użytkownik już ocenił aplikację
+            if (currentUser?.id) {
+                await loadExistingRating(currentUser.id);
+            }
+        } catch (error) {
+            console.error('Error initializing rating screen:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const loadAppStats = async () => {
+        try {
+            const { data, error } = await supabase.rpc('get_average_rating');
+
+            if (error) {
+                console.error('Error loading app stats:', error);
+                return;
+            }
+
+            if (data && data.length > 0) {
+                setAppStats(data[0]);
+                console.log('App stats loaded:', data[0]);
+            }
+        } catch (error) {
+            console.error('Error loading app stats:', error);
+        }
+    };
+
+    const loadExistingRating = async (userId) => {
+        try {
+            const { data, error } = await supabase
+                .from('app_ratings')
+                .select('*')
+                .eq('user_id', userId)
+                .maybeSingle();
+
+            if (error) {
+                console.error('Error loading existing rating:', error);
+                return;
+            }
+
+            if (data) {
+                setExistingRating(data);
+                setSelectedRating(data.rating);
+                setFeedback(data.feedback || '');
+                console.log('Existing rating loaded:', data);
+            }
+        } catch (error) {
+            console.error('Error loading existing rating:', error);
+        }
+    };
 
     const handleStarPress = (rating) => {
         setSelectedRating(rating);
@@ -31,27 +105,59 @@ const RateAppScreen = () => {
             return;
         }
 
+        if (!user?.id) {
+            Alert.alert('Błąd', 'Nie można zapisać oceny. Spróbuj ponownie.');
+            return;
+        }
+
         setIsSubmitting(true);
 
         try {
-            // Symulacja wysyłania oceny
-            await new Promise(resolve => setTimeout(resolve, 1500));
+            console.log('Submitting rating:', {
+                user_id: user.id,
+                rating: selectedRating,
+                feedback: feedback,
+                app_version: APP_CONFIG.VERSION,
+                device_platform: Platform.OS
+            });
+
+            const { data, error } = await supabase
+                .from('app_ratings')
+                .upsert({
+                    user_id: user.id,
+                    rating: selectedRating,
+                    feedback: feedback || null,
+                    app_version: APP_CONFIG.VERSION,
+                    device_platform: Platform.OS
+                })
+                .select()
+                .single();
+
+            if (error) {
+                throw error;
+            }
+
+            console.log('Rating saved:', data);
+
+            // Odśwież statystyki
+            await loadAppStats();
+
+            const isUpdate = existingRating !== null;
 
             Alert.alert(
                 'Dziękujemy!',
-                `Twoja ocena (${selectedRating} ${selectedRating === 1 ? 'gwiazdka' : selectedRating < 5 ? 'gwiazdki' : 'gwiazdek'}) została zapisana.\n\n${feedback ? 'Twoja opinia pomoże nam udoskonalić aplikację!' : ''}`,
-                [
-                    {
-                        text: 'OK',
-                        onPress: () => {
-                            setSelectedRating(0);
-                            setFeedback('');
-                        }
-                    }
-                ]
+                `Twoja ocena (${selectedRating} ${selectedRating === 1 ? 'gwiazdka' : selectedRating < 5 ? 'gwiazdki' : 'gwiazdek'}) została ${isUpdate ? 'zaktualizowana' : 'zapisana'}.\n\n${feedback ? 'Twoja opinia pomoże nam udoskonalić aplikację!' : ''}`,
+                [{ text: 'OK' }]
             );
+
+            setExistingRating(data);
+
         } catch (error) {
-            Alert.alert('Błąd', 'Nie udało się wysłać oceny. Spróbuj ponownie.');
+            console.error('Error submitting rating:', error);
+            Alert.alert(
+                'Błąd',
+                'Nie udało się wysłać oceny. Sprawdź połączenie internetowe i spróbuj ponownie.'
+            );
         } finally {
             setIsSubmitting(false);
         }
@@ -109,6 +215,55 @@ const RateAppScreen = () => {
         }
     };
 
+    const renderStatsCard = () => {
+        if (!appStats) return null;
+
+        const { average_rating, total_ratings, rating_distribution } = appStats;
+
+        return (
+            <View style={styles.statsCard}>
+                <Text style={styles.statsTitle}>Oceny użytkowników</Text>
+                <View style={styles.statsRow}>
+                    <View style={styles.averageRatingContainer}>
+                        <Text style={styles.averageRating}>{average_rating}</Text>
+                        <View style={styles.starsRow}>
+                            {[1, 2, 3, 4, 5].map(star => (
+                                <Ionicons
+                                    key={star}
+                                    name={star <= Math.round(average_rating) ? 'star' : 'star-outline'}
+                                    size={16}
+                                    color="#FFD700"
+                                />
+                            ))}
+                        </View>
+                        <Text style={styles.totalRatings}>{total_ratings} ocen</Text>
+                    </View>
+                    <View style={styles.distributionContainer}>
+                        {[5, 4, 3, 2, 1].map(rating => {
+                            const count = rating_distribution?.[rating] || 0;
+                            const percentage = total_ratings > 0 ? (count / total_ratings) * 100 : 0;
+                            return (
+                                <View key={rating} style={styles.distributionRow}>
+                                    <Text style={styles.distributionRating}>{rating}</Text>
+                                    <Ionicons name="star" size={12} color="#FFD700" />
+                                    <View style={styles.distributionBar}>
+                                        <View
+                                            style={[
+                                                styles.distributionFill,
+                                                { width: `${percentage}%` }
+                                            ]}
+                                        />
+                                    </View>
+                                    <Text style={styles.distributionCount}>{count}</Text>
+                                </View>
+                            );
+                        })}
+                    </View>
+                </View>
+            </View>
+        );
+    };
+
     const features = [
         {
             icon: 'newspaper',
@@ -132,6 +287,17 @@ const RateAppScreen = () => {
         }
     ];
 
+    if (loading) {
+        return (
+            <SafeAreaView style={styles.container}>
+                <View style={styles.loadingContainer}>
+                    <ActivityIndicator size="large" color={COLORS.primary} />
+                    <Text style={styles.loadingText}>Ładowanie...</Text>
+                </View>
+            </SafeAreaView>
+        );
+    }
+
     return (
         <SafeAreaView style={styles.container}>
             <ScrollView style={styles.scrollView}>
@@ -141,15 +307,36 @@ const RateAppScreen = () => {
                     style={styles.header}
                 >
                     <Ionicons name="star" size={48} color="#FFD700" />
-                    <Text style={styles.headerTitle}>Oceń InfoApp</Text>
+                    <Text style={styles.headerTitle}>
+                        {existingRating ? 'Aktualizuj ocenę' : 'Oceń InfoApp'}
+                    </Text>
                     <Text style={styles.headerSubtitle}>
-                        Twoja opinia jest dla nas bardzo ważna!
+                        {existingRating
+                            ? 'Zmień swoją ocenę aplikacji'
+                            : 'Twoja opinia jest dla nas bardzo ważna!'
+                        }
                     </Text>
                 </LinearGradient>
 
+                {/* Statystyki aplikacji */}
+                {renderStatsCard()}
+
+                {/* Existing Rating Info */}
+                {existingRating && (
+                    <View style={styles.existingRatingCard}>
+                        <Ionicons name="information-circle" size={20} color={COLORS.blue} />
+                        <Text style={styles.existingRatingText}>
+                            Już oceniłeś aplikację na {existingRating.rating} {existingRating.rating === 1 ? 'gwiazdkę' : 'gwiazdki'}.
+                            Możesz zaktualizować swoją ocenę.
+                        </Text>
+                    </View>
+                )}
+
                 {/* Rating Section */}
                 <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Jak oceniasz naszą aplikację?</Text>
+                    <Text style={styles.sectionTitle}>
+                        {existingRating ? 'Zmień swoją ocenę' : 'Jak oceniasz naszą aplikację?'}
+                    </Text>
                     <View style={styles.ratingContainer}>
                         <View style={styles.starsContainer}>
                             {renderStars()}
@@ -187,13 +374,18 @@ const RateAppScreen = () => {
                         disabled={selectedRating === 0 || isSubmitting}
                         activeOpacity={0.8}
                     >
-                        <Ionicons
-                            name={isSubmitting ? 'hourglass' : 'send'}
-                            size={20}
-                            color={COLORS.white}
-                        />
+                        {isSubmitting ? (
+                            <ActivityIndicator size="small" color={COLORS.white} />
+                        ) : (
+                            <Ionicons name="send" size={20} color={COLORS.white} />
+                        )}
                         <Text style={styles.submitButtonText}>
-                            {isSubmitting ? 'Wysyłanie...' : 'Wyślij ocenę'}
+                            {isSubmitting
+                                ? 'Wysyłanie...'
+                                : existingRating
+                                    ? 'Aktualizuj ocenę'
+                                    : 'Wyślij ocenę'
+                            }
                         </Text>
                     </TouchableOpacity>
                 </View>
@@ -259,6 +451,16 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: COLORS.background,
     },
+    loadingContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    loadingText: {
+        fontSize: 16,
+        color: COLORS.gray,
+        marginTop: 12,
+    },
     scrollView: {
         flex: 1,
     },
@@ -279,6 +481,93 @@ const styles = StyleSheet.create({
         fontSize: 16,
         color: 'rgba(255,255,255,0.9)',
         textAlign: 'center',
+    },
+    statsCard: {
+        backgroundColor: COLORS.white,
+        marginHorizontal: 16,
+        marginBottom: 16,
+        borderRadius: 12,
+        padding: 16,
+        shadowColor: COLORS.black,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 3,
+    },
+    statsTitle: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: COLORS.black,
+        marginBottom: 12,
+    },
+    statsRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    averageRatingContainer: {
+        alignItems: 'center',
+        marginRight: 20,
+    },
+    averageRating: {
+        fontSize: 32,
+        fontWeight: 'bold',
+        color: COLORS.primary,
+    },
+    starsRow: {
+        flexDirection: 'row',
+        marginVertical: 4,
+    },
+    totalRatings: {
+        fontSize: 12,
+        color: COLORS.gray,
+    },
+    distributionContainer: {
+        flex: 1,
+    },
+    distributionRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 4,
+    },
+    distributionRating: {
+        fontSize: 12,
+        color: COLORS.gray,
+        width: 12,
+    },
+    distributionBar: {
+        flex: 1,
+        height: 8,
+        backgroundColor: COLORS.lightGray,
+        borderRadius: 4,
+        marginHorizontal: 8,
+    },
+    distributionFill: {
+        height: '100%',
+        backgroundColor: '#FFD700',
+        borderRadius: 4,
+    },
+    distributionCount: {
+        fontSize: 12,
+        color: COLORS.gray,
+        width: 20,
+        textAlign: 'right',
+    },
+    existingRatingCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: COLORS.blue + '10',
+        padding: 12,
+        marginHorizontal: 16,
+        marginBottom: 16,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: COLORS.blue + '30',
+    },
+    existingRatingText: {
+        flex: 1,
+        fontSize: 14,
+        color: COLORS.blue,
+        marginLeft: 8,
     },
     section: {
         marginHorizontal: 16,

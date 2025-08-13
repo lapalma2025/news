@@ -396,6 +396,7 @@ const helpStyles = StyleSheet.create({
         flexDirection: 'row',
         flexWrap: 'wrap',
         justifyContent: 'space-between',
+        marginTop: 24,
     },
     contactOption: {
         width: '32%',
@@ -460,8 +461,9 @@ const helpStyles = StyleSheet.create({
         marginRight: 12,
     },
     faqAnswer: {
-        paddingHorizontal: 16,
-        paddingBottom: 16,
+        paddingHorizontal: 8,
+        paddingTop: 8,
+        paddingBottom: 8,
         backgroundColor: COLORS.lightGray,
     },
     faqAnswerText: {
