@@ -54,35 +54,20 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded, onLikeUpdate }) 
         }
     }, [item, currentUser]);
 
-    useEffect(() => {
-        // Aktualizuj liczniki gdy item się zmieni (np. z parent component)
-        if (item && visible) {
-            console.log('CommentModal - item changed, updating counts:', item.likes_count, item.comments_count);
-            setLikesCount(item.likes_count || 0);
-            setCommentsCount(item.comments_count || 0);
+    // W CommentModal.js - ZASTĄP problematyczny useEffect tym:
 
-            // Zaktualizuj stan polubienia jeśli mamy użytkownika
-            if (currentUser?.id) {
-                checkIfPostLiked(currentUser.id);
-            }
-        }
-    }, [item?.likes_count, item?.comments_count, visible, currentUser?.id]);
-
+    // W CommentModal.js - ZOSTAW TYLKO TEN useEffect:
     useEffect(() => {
         if (visible && item) {
             console.log('CommentModal opened for item:', item.id);
             initializeData();
         } else {
-            // POPRAWKA: Reset wszystkich stanów
+            // Reset stanu gdy modal się zamyka
             setComment('');
             setUserName('');
             setShowNameInput(true);
             setComments([]);
             setContentExpanded(false);
-            setIsLiked(false);  // DODANE
-            setLikesCount(0);   // DODANE
-            setCommentsCount(0); // DODANE
-
             if (commentSubscription) {
                 commentService.unsubscribeFromComments(commentSubscription);
                 setCommentSubscription(null);
@@ -94,7 +79,7 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded, onLikeUpdate }) 
                 commentService.unsubscribeFromComments(commentSubscription);
             }
         };
-    }, [visible, item]);
+    }, [visible, item?.id]);
 
     const initializeData = async () => {
         try {
@@ -133,11 +118,11 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded, onLikeUpdate }) 
         }
     };
 
+    // W CommentModal.js - upewnij się że checkIfPostLiked NIE wywołuje onLikeUpdate:
+    // W CommentModal.js - ZASTĄP checkIfPostLiked() tym:
     const checkIfPostLiked = async (userId) => {
         try {
             const postType = item.politician_name ? 'politician_post' : 'news';
-
-            console.log('🔍 Checking if post liked:', { postId: item.id, userId, postType });
 
             const { data, error } = await supabase
                 .from('infoapp_likes')
@@ -152,33 +137,7 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded, onLikeUpdate }) 
                 console.log('👍 User liked status:', userLiked);
                 setIsLiked(userLiked);
 
-                // DODAJ: Pobierz rzeczywisty licznik z bazy danych
-                const tableName = postType === 'news' ? 'infoapp_news' : 'infoapp_politician_posts';
-                const { data: postData, error: postError } = await supabase
-                    .from(tableName)
-                    .select('likes_count')
-                    .eq('id', item.id)
-                    .single();
-
-                if (!postError && postData) {
-                    const realLikesCount = postData.likes_count || 0;
-                    console.log('📊 Real likes count from DB:', realLikesCount);
-                    console.log('📊 Item likes count:', item?.likes_count);
-
-                    if (realLikesCount !== item?.likes_count) {
-                        console.log('⚠️ Counts mismatch! Updating to real count:', realLikesCount);
-                        setLikesCount(realLikesCount);
-
-                        // Powiadom parent o prawdziwym stanie
-                        if (onLikeUpdate) {
-                            onLikeUpdate(item.id, realLikesCount, userLiked);
-                        }
-                    } else {
-                        setLikesCount(realLikesCount);
-                    }
-                }
             } else {
-                console.error('Error checking if post liked:', error);
                 setIsLiked(false);
             }
         } catch (error) {
@@ -195,13 +154,31 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded, onLikeUpdate }) 
             const postType = item.politician_name ? 'politician_post' : 'news';
             const tableName = postType === 'news' ? 'infoapp_news' : 'infoapp_politician_posts';
 
-            console.log('CommentModal togglePostLike - current state:', isLiked, likesCount);
+            console.log('🚀 CommentModal togglePostLike START - current state:', isLiked, likesCount);
+
+            // ZABEZPIECZENIE: Sprawdź aktualny stan w bazie przed zmianą
+            const { data: currentLikeStatus } = await supabase
+                .from('infoapp_likes')
+                .select('id')
+                .eq('post_id', item.id)
+                .eq('post_type', postType)
+                .eq('user_id', currentUser.id)
+                .limit(1);
+
+            const actualIsLiked = currentLikeStatus && currentLikeStatus.length > 0;
+            console.log('🔍 Actual like status in DB:', actualIsLiked, 'UI thinks:', isLiked);
+
+            // Jeśli stan w UI nie zgadza się z bazą, synchronizuj
+            if (actualIsLiked !== isLiked) {
+                console.log('⚠️ Like status mismatch! Syncing...');
+                setIsLiked(actualIsLiked);
+                return; // Przerwij operację
+            }
 
             // Zapisz aktualny stan przed zmianą
-            const currentIsLiked = isLiked;
-            const currentLikes = likesCount;
+            const currentIsLiked = actualIsLiked;
             const newIsLiked = !currentIsLiked;
-            const newLikesCount = currentIsLiked ? currentLikes - 1 : currentLikes + 1;
+            const newLikesCount = currentIsLiked ? Math.max(likesCount - 1, 0) : likesCount + 1;
 
             // Optymistyczna aktualizacja UI
             setIsLiked(newIsLiked);
@@ -211,7 +188,7 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded, onLikeUpdate }) 
 
             if (currentIsLiked) {
                 // USUŃ POLUBIENIE
-                console.log('CommentModal - removing like...');
+                console.log('🗑️ Removing like...');
 
                 const { error } = await supabase
                     .from('infoapp_likes')
@@ -221,27 +198,35 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded, onLikeUpdate }) 
                     .eq('user_id', currentUser.id);
 
                 if (!error) {
-                    // Zmniejsz licznik w tabeli
-                    const { error: updateError } = await supabase
+                    // Pobierz aktualną wartość i dekrementuj
+                    const { data: currentData, error: fetchError } = await supabase
                         .from(tableName)
-                        .update({
-                            likes_count: Math.max(currentLikes - 1, 0)
-                        })
-                        .eq('id', item.id);
+                        .select('likes_count')
+                        .eq('id', item.id)
+                        .single();
 
-                    success = !updateError;
-                    if (updateError) {
-                        console.error('Error updating likes count:', updateError);
+                    if (!fetchError && currentData) {
+                        const actualCount = currentData.likes_count || 0;
+                        const newCount = Math.max(actualCount - 1, 0);
+
+                        const { error: updateError } = await supabase
+                            .from(tableName)
+                            .update({ likes_count: newCount })
+                            .eq('id', item.id);
+
+                        success = !updateError;
+                        if (success) {
+                            setLikesCount(newCount);
+                            console.log('✅ Like removed. Count:', actualCount, '->', newCount);
+                        }
                     }
-                } else {
-                    console.error('Error deleting like:', error);
                 }
             } else {
-                // DODAJ POLUBIENIE
-                console.log('CommentModal - adding like...');
+                // DODAJ POLUBIENIE  
+                console.log('➕ Adding like...');
 
-                // Sprawdź czy już nie istnieje
-                const { data: existing } = await supabase
+                // Sprawdź czy już nie istnieje (double-check)
+                const { data: doubleCheck } = await supabase
                     .from('infoapp_likes')
                     .select('id')
                     .eq('post_id', item.id)
@@ -249,8 +234,9 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded, onLikeUpdate }) 
                     .eq('user_id', currentUser.id)
                     .limit(1);
 
-                if (existing && existing.length > 0) {
-                    console.log('Like already exists');
+                if (doubleCheck && doubleCheck.length > 0) {
+                    console.log('⚠️ Like already exists! Skipping...');
+                    setIsLiked(true);
                     success = true;
                 } else {
                     const { error } = await supabase
@@ -263,52 +249,48 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded, onLikeUpdate }) 
                         }]);
 
                     if (!error || error.code === '23505') { // 23505 = duplikat
-                        // Zwiększ licznik w tabeli
-                        const { error: updateError } = await supabase
+                        // Pobierz aktualną wartość i inkrementuj
+                        const { data: currentData, error: fetchError } = await supabase
                             .from(tableName)
-                            .update({
-                                likes_count: currentLikes + 1
-                            })
-                            .eq('id', item.id);
+                            .select('likes_count')
+                            .eq('id', item.id)
+                            .single();
 
-                        success = !updateError;
-                        if (updateError) {
-                            console.error('Error updating likes count:', updateError);
+                        if (!fetchError && currentData) {
+                            const actualCount = currentData.likes_count || 0;
+                            const newCount = actualCount + 1;
+
+                            const { error: updateError } = await supabase
+                                .from(tableName)
+                                .update({ likes_count: newCount })
+                                .eq('id', item.id);
+
+                            success = !updateError;
+                            if (success) {
+                                setLikesCount(newCount);
+                                console.log('✅ Like added. Count:', actualCount, '->', newCount);
+                            }
                         }
-                    } else {
-                        console.error('Error inserting like:', error);
                     }
                 }
             }
 
             if (!success) {
-                // Rollback w przypadku błędu
-                console.log('CommentModal - rolling back like change');
+                // Rollback
                 setIsLiked(currentIsLiked);
-                setLikesCount(currentLikes);
+                setLikesCount(likesCount);
                 Alert.alert('Błąd', 'Nie udało się zaktualizować polubienia');
             } else {
-                console.log('CommentModal - like change successful, notifying parent');
-                console.log('New state:', newIsLiked, newLikesCount);
-
-                // KLUCZOWE: Powiadom parent component o zmianie
+                // Powiadom parent
                 if (onLikeUpdate) {
-                    console.log('CommentModal calling onLikeUpdate:', item.id, newLikesCount, newIsLiked);
-                    onLikeUpdate(item.id, newLikesCount, newIsLiked);
-                }
-
-                // Zaktualizuj również sam item dla przyszłych wywołań
-                if (item) {
-                    item.likes_count = newLikesCount;
-                    item.isLikedByUser = newIsLiked;
+                    onLikeUpdate(item.id, likesCount, newIsLiked);
                 }
             }
 
         } catch (error) {
             console.error('CommentModal - Error toggling post like:', error);
-            // Rollback
-            setIsLiked(currentIsLiked);
-            setLikesCount(currentLikes);
+            setIsLiked(isLiked);
+            setLikesCount(likesCount);
             Alert.alert('Błąd', 'Wystąpił problem z polubienie posta');
         } finally {
             setLikingPost(false);

@@ -1,4 +1,4 @@
-// src/components/news/NewsCard.js - KOMPLETNIE POPRAWIONY
+// src/components/news/NewsCard.js - OSTATECZNIE POPRAWIONY
 import React, { useState, useEffect } from 'react';
 import {
     View,
@@ -6,10 +6,8 @@ import {
     StyleSheet,
     TouchableOpacity,
     Alert,
-    Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 
 import { COLORS } from '../../styles/colors';
 import { newsService } from '../../services/newsService';
@@ -19,12 +17,11 @@ const NewsCard = ({ news, onPress, onComment, onLike, isLiked = false }) => {
     const [likesCount, setLikesCount] = useState(news.likes_count || 0);
     const [commentsCount, setCommentsCount] = useState(news.comments_count || 0);
     const [isFavorite, setIsFavorite] = useState(false);
-    const [isLiking, setIsLiking] = useState(false);
     const [currentUser, setCurrentUser] = useState(null);
     const [subscription, setSubscription] = useState(null);
     const [liked, setLiked] = useState(isLiked);
 
-    // POPRAWKA 1: Reaguj na zmiany w props news
+    // Reaguj na zmiany w props news
     useEffect(() => {
         console.log('NewsCard: news props changed', {
             id: news.id,
@@ -38,7 +35,7 @@ const NewsCard = ({ news, onPress, onComment, onLike, isLiked = false }) => {
         setLiked(news.isLikedByUser || isLiked);
     }, [news.likes_count, news.comments_count, news.isLikedByUser]);
 
-    // POPRAWKA 2: Reaguj na zmiany w props isLiked
+    // Reaguj na zmiany w props isLiked
     useEffect(() => {
         console.log('NewsCard: isLiked prop changed', isLiked);
         setLiked(isLiked);
@@ -61,7 +58,7 @@ const NewsCard = ({ news, onPress, onComment, onLike, isLiked = false }) => {
             setCurrentUser(user);
 
             if (user) {
-                // POPRAWKA 3: Sprawdź czy już mamy informację o polubienium w props
+                // Sprawdź czy już mamy informację o polubienium w props
                 if (news.isLikedByUser !== undefined) {
                     console.log('NewsCard: Using isLikedByUser from props', news.isLikedByUser);
                     setLiked(news.isLikedByUser);
@@ -95,65 +92,44 @@ const NewsCard = ({ news, onPress, onComment, onLike, isLiked = false }) => {
         setSubscription(sub);
     };
 
-    const handleLike = async () => {
+    // TYLKO deleguj do parent - ZERO lokalnej logiki API
+    // W NewsCard.js - ZASTĄP handleLike() tym prostym kodem:
+
+    const handleLike = () => {
         if (!currentUser) {
             Alert.alert('Info', 'Zaloguj się, aby polubić artykuł');
             return;
         }
 
-        if (isLiking) return;
+        console.log('NewsCard: Delegating to parent - news.id:', news.id, 'current liked:', liked);
 
-        console.log('NewsCard: handleLike called', { currentLiked: liked, currentCount: likesCount });
-
-        setIsLiking(true);
-
-        // Optymistyczna aktualizacja UI
+        // ❌ USUŃ CAŁĄ LOGIKĘ API - zostaw tylko delegację:
+        /*
+        // Usuń to wszystko:
         const newLikedState = !liked;
-        const newLikesCount = newLikedState
-            ? Math.max(likesCount + 1, 1)
-            : Math.max(likesCount - 1, 0);
-
-        console.log('NewsCard: Optimistic update', { newLiked: newLikedState, newCount: newLikesCount });
-
+        const newLikesCount = newLikedState ? likesCount + 1 : likesCount - 1;
         setLiked(newLikedState);
         setLikesCount(newLikesCount);
-
+        
         try {
             const response = await newsService.toggleLike(news.id, currentUser.id, liked);
+            // ... cała reszta logiki
+        }
+        */
 
-            if (response.success) {
-                console.log('NewsCard: Like toggle successful');
-
-                if (newLikedState) {
-                    await userService.incrementLikes();
-                }
-
-                // POPRAWKA 4: Powiadom rodzica o zmianie
-                if (onLike) {
-                    console.log('NewsCard: Notifying parent about like change');
-                    onLike(news.id, newLikedState);
-                }
-            } else {
-                console.error('NewsCard: Like toggle failed, rolling back');
-                // Rollback w przypadku błędu
-                setLiked(liked);
-                setLikesCount(likesCount);
-                Alert.alert('Błąd', 'Nie udało się zaktualizować polubienia');
-            }
-        } catch (error) {
-            console.error('NewsCard: Error toggling like:', error);
-            // Rollback w przypadku błędu
-            setLiked(liked);
-            setLikesCount(likesCount);
-            Alert.alert('Błąd', 'Wystąpił problem z polubieniam');
-        } finally {
-            setIsLiking(false);
+        // ✅ ZOSTAW TYLKO TO - cała logika w NewsScreen:
+        if (onLike) {
+            onLike(news.id, !liked);
         }
     };
 
     const handleComment = async () => {
         // Dodaj do historii czytania
-        await userService.addToReadHistory(news.id, news.title, 'news');
+        try {
+            await userService.addToReadHistory(news.id, news.title, 'news');
+        } catch (error) {
+            console.error('Error adding to read history:', error);
+        }
 
         if (onComment) {
             onComment(news);
@@ -184,11 +160,31 @@ const NewsCard = ({ news, onPress, onComment, onLike, isLiked = false }) => {
 
     const handlePress = async () => {
         // Dodaj do historii czytania przy kliknięciu
-        await userService.addToReadHistory(news.id, news.title, 'news');
+        try {
+            await userService.addToReadHistory(news.id, news.title, 'news');
+        } catch (error) {
+            console.error('Error adding to read history:', error);
+        }
 
         if (onPress) {
             onPress(news);
         }
+    };
+
+    const handleShare = () => {
+        Alert.alert(
+            'Udostępnij artykuł',
+            `"${news.title}" - ${news.author}\n\nChcesz udostępnić ten artykuł?`,
+            [
+                { text: 'Anuluj', style: 'cancel' },
+                {
+                    text: 'Udostępnij',
+                    onPress: () => {
+                        Alert.alert('Udostępniono!', 'Artykuł został udostępniony');
+                    }
+                }
+            ]
+        );
     };
 
     const formatTime = (timestamp) => {
@@ -208,6 +204,7 @@ const NewsCard = ({ news, onPress, onComment, onLike, isLiked = false }) => {
     };
 
     const truncateContent = (content, maxLength = 120) => {
+        if (!content) return '';
         if (content.length <= maxLength) return content;
         return content.substring(0, maxLength) + '...';
     };
@@ -256,7 +253,7 @@ const NewsCard = ({ news, onPress, onComment, onLike, isLiked = false }) => {
                 <TouchableOpacity
                     style={[styles.actionButton, liked && styles.actionButtonLiked]}
                     onPress={handleLike}
-                    disabled={isLiking}
+                    activeOpacity={0.7}
                 >
                     <Ionicons
                         name={liked ? "heart" : "heart-outline"}
@@ -267,7 +264,7 @@ const NewsCard = ({ news, onPress, onComment, onLike, isLiked = false }) => {
                         styles.actionText,
                         liked && styles.actionTextLiked
                     ]}>
-                        {isLiking ? '...' : (likesCount || 0)}
+                        {likesCount || 0}
                     </Text>
                 </TouchableOpacity>
 
@@ -275,6 +272,7 @@ const NewsCard = ({ news, onPress, onComment, onLike, isLiked = false }) => {
                 <TouchableOpacity
                     style={styles.actionButton}
                     onPress={handleComment}
+                    activeOpacity={0.7}
                 >
                     <Ionicons
                         name="chatbubble-outline"
@@ -287,7 +285,11 @@ const NewsCard = ({ news, onPress, onComment, onLike, isLiked = false }) => {
                 </TouchableOpacity>
 
                 {/* Przycisk udostępniania */}
-                <TouchableOpacity style={styles.actionButton}>
+                <TouchableOpacity
+                    style={styles.actionButton}
+                    onPress={handleShare}
+                    activeOpacity={0.7}
+                >
                     <Ionicons
                         name="share-outline"
                         size={18}

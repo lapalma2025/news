@@ -1,4 +1,4 @@
-// src/screens/NewsScreen.js
+// src/screens/NewsScreen.js - KOMPLETNIE POPRAWIONY Z OBSŁUGĄ KOMENTARZY
 import React, { useState, useEffect } from 'react';
 import { AppState } from 'react-native';
 import {
@@ -15,6 +15,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { userService } from '../services/userService';
+import { supabase } from '../services/supabaseClient';
 import { LinearGradient } from 'expo-linear-gradient';
 
 import { COLORS } from '../styles/colors';
@@ -45,9 +46,11 @@ const NewsScreen = () => {
     const [selectedItem, setSelectedItem] = useState(null);
     const [newsSubscription, setNewsSubscription] = useState(null);
 
+    // Odświeżanie danych po powrocie do aplikacji
     useEffect(() => {
         const handleAppStateChange = (nextAppState) => {
             if (nextAppState === 'active') {
+                console.log('NewsScreen: App became active, refreshing news...');
                 loadNews();
             }
         };
@@ -74,23 +77,75 @@ const NewsScreen = () => {
         filterNews();
     }, [news, searchQuery, selectedCategory]);
 
+    // Debug: loguj zmiany w news state
+    useEffect(() => {
+        console.log('NewsScreen: News state changed, total items:', news.length);
+        if (selectedItem) {
+            const currentItem = news.find(item => item.id === selectedItem.id);
+            if (currentItem) {
+                console.log('NewsScreen: Selected item in news array:', {
+                    id: currentItem.id,
+                    likes: currentItem.likes_count,
+                    comments: currentItem.comments_count
+                });
+            }
+        }
+    }, [news]);
+
     const loadNews = async () => {
         setLoading(true);
         try {
-            console.log('Loading news...');
+            console.log('NewsScreen: Loading news...');
             const response = await newsService.fetchNews();
-            console.log('News response:', response);
 
             if (response.success) {
-                console.log('News data:', response.data);
-                console.log('News count:', response.data.length);
-                setNews(response.data);
+                console.log('NewsScreen: Loaded', response.data.length, 'news items');
+
+                // POPRAWKA: Pobierz aktualne liczniki z bazy danych
+                const user = await userService.getCurrentUser();
+                const newsWithActualData = await Promise.all(
+                    response.data.map(async (newsItem) => {
+                        try {
+                            // Pobierz aktualne liczniki z bazy
+                            const { data: actualCounts, error: countsError } = await supabase
+                                .from('infoapp_news')
+                                .select('likes_count, comments_count')
+                                .eq('id', newsItem.id)
+                                .single();
+
+                            let isLikedByUser = false;
+                            if (user?.id) {
+                                // Sprawdź czy użytkownik polubił news
+                                const likeResponse = await newsService.checkIfLiked(newsItem.id, user.id);
+                                isLikedByUser = likeResponse.success ? likeResponse.data : false;
+                            }
+
+                            return {
+                                ...newsItem,
+                                likes_count: actualCounts?.likes_count || 0,
+                                comments_count: actualCounts?.comments_count || 0,  // KLUCZOWE
+                                isLikedByUser: isLikedByUser
+                            };
+                        } catch (error) {
+                            console.error('Error loading data for news:', newsItem.id, error);
+                            return {
+                                ...newsItem,
+                                likes_count: newsItem.likes_count || 0,
+                                comments_count: newsItem.comments_count || 0,
+                                isLikedByUser: false
+                            };
+                        }
+                    })
+                );
+
+                console.log('NewsScreen: News with actual data:', newsWithActualData);
+                setNews(newsWithActualData);
             } else {
-                console.error('Failed to load news:', response);
+                console.error('NewsScreen: Failed to load news');
                 Alert.alert('Błąd', 'Nie udało się załadować newsów');
             }
         } catch (error) {
-            console.error('Error loading news:', error);
+            console.error('NewsScreen: Error loading news:', error);
             Alert.alert('Błąd', 'Wystąpił problem z połączeniem');
         } finally {
             setLoading(false);
@@ -99,18 +154,79 @@ const NewsScreen = () => {
 
     const setupRealtimeSubscription = () => {
         const subscription = newsService.subscribeToNews((payload) => {
-            console.log('Real-time news update:', payload);
+            console.log('NewsScreen: Real-time news update:', payload);
             if (payload.eventType === 'INSERT') {
                 setNews(prev => [payload.new, ...prev]);
             } else if (payload.eventType === 'UPDATE') {
                 setNews(prev =>
                     prev.map(item =>
-                        item.id === payload.new.id ? payload.new : item
+                        item.id === payload.new.id ? { ...item, ...payload.new } : item
                     )
                 );
             }
         });
         setNewsSubscription(subscription);
+    };
+
+    // W NewsScreen.js - zostaw tę funkcję jak była, ale dodaj log:
+    // W NewsScreen.js - ZASTĄP handleLike() tym:
+
+    const handleLike = async (newsId, shouldLike) => {
+        console.log('🎯 NewsScreen handleLike - MAIN LOGIC:', newsId, shouldLike);
+
+        try {
+            const user = await userService.getCurrentUser();
+            if (!user?.id) {
+                Alert.alert('Info', 'Musisz być zalogowany');
+                return;
+            }
+
+            const currentNews = news.find(item => item.id === newsId);
+            if (!currentNews) return;
+
+            const currentIsLiked = currentNews.isLikedByUser || false;
+            const newLikesCount = shouldLike
+                ? (currentNews.likes_count || 0) + 1
+                : Math.max((currentNews.likes_count || 0) - 1, 0);
+
+            // Optymistyczna aktualizacja UI
+            setNews(prev =>
+                prev.map(item =>
+                    item.id === newsId
+                        ? {
+                            ...item,
+                            likes_count: newLikesCount,
+                            isLikedByUser: shouldLike
+                        }
+                        : item
+                )
+            );
+
+            // ❌ USUŃ TĘ LINIĘ - to powoduje podwójną aktualizację:
+            // await newsService.updateLikesCount(newsId, shouldLike);
+
+            // ✅ ZOSTAW TYLKO TO - toggleLike() już aktualizuje licznik:
+            const response = await newsService.toggleLike(newsId, user.id, currentIsLiked);
+
+            if (!response.success) {
+                // Rollback w przypadku błędu
+                setNews(prev =>
+                    prev.map(item =>
+                        item.id === newsId
+                            ? {
+                                ...item,
+                                likes_count: currentNews.likes_count,
+                                isLikedByUser: currentIsLiked
+                            }
+                            : item
+                    )
+                );
+                Alert.alert('Błąd', 'Nie udało się zaktualizować polubienia');
+            }
+        } catch (error) {
+            console.error('NewsScreen: Error updating like:', error);
+            Alert.alert('Błąd', 'Wystąpił problem z polubienieм');
+        }
     };
 
     const handleLikeUpdate = (postId, newLikesCount, isLiked) => {
@@ -121,7 +237,7 @@ const NewsScreen = () => {
 
         // Aktualizuj stan news
         setNews(prevNews => {
-            console.log('📝 Updating news array...');
+            console.log('📝 NewsScreen: Updating news array...');
             const updated = prevNews.map(item => {
                 if (item.id === postId) {
                     console.log(`📝 Found item ${postId}, updating likes: ${item.likes_count} -> ${newLikesCount}`);
@@ -133,13 +249,13 @@ const NewsScreen = () => {
                 }
                 return item;
             });
-            console.log('📝 News array updated');
+            console.log('📝 NewsScreen: News array updated');
             return updated;
         });
 
         // Aktualizuj selectedItem
         if (selectedItem && selectedItem.id === postId) {
-            console.log('📝 Updating selectedItem too');
+            console.log('📝 NewsScreen: Updating selectedItem too');
             setSelectedItem(prev => ({
                 ...prev,
                 likes_count: newLikesCount,
@@ -148,45 +264,39 @@ const NewsScreen = () => {
         }
     };
 
-    const forceRefreshNews = async () => {
-        console.log('🔄 Force refreshing news...');
-        const response = await newsService.fetchNews();
-        if (response.success) {
-            console.log('🔄 Force refresh successful, got', response.data.length, 'items');
-            setNews(response.data);
-        }
-    };
-
-    // I zmodyfikuj closeModal:
-    const closeModal = async () => {
-        console.log('🚪 Closing modal, force refreshing...');
-        setModalVisible(false);
-
-        // Force refresh danych po zamknięciu modala
-        setTimeout(async () => {
-            console.log('🔄 Force refreshing news after modal close...');
-            await loadNews();
-        }, 300);
-    };
-
-    // Dodaj handleCommentUpdate:
     const handleCommentUpdate = (postId, newCommentsCount) => {
-        console.log('Updating comments in news list:', postId, newCommentsCount);
+        console.log('💬 NewsScreen: Received comment update:', postId, newCommentsCount);
 
-        setNews(prevNews =>
-            prevNews.map(item =>
+        // Aktualizuj stan news
+        setNews(prevNews => {
+            const updated = prevNews.map(item =>
                 item.id === postId
                     ? { ...item, comments_count: newCommentsCount }
                     : item
-            )
-        );
+            );
+            console.log('💬 NewsScreen: News array updated with new comments count');
+            return updated;
+        });
 
+        // Aktualizuj również selectedItem jeśli to ten sam
         if (selectedItem && selectedItem.id === postId) {
+            console.log('💬 NewsScreen: Updating selectedItem comments count too');
             setSelectedItem(prev => ({
                 ...prev,
                 comments_count: newCommentsCount
             }));
         }
+    };
+
+    const closeModal = async () => {
+        console.log('🚪 NewsScreen: Closing modal...');
+        setModalVisible(false);
+
+        // Force refresh danych po zamknięciu modala
+        setTimeout(async () => {
+            console.log('🔄 NewsScreen: Force refreshing news after modal close...');
+            await loadNews();
+        }, 300);
     };
 
     const filterNews = () => {
@@ -228,10 +338,13 @@ const NewsScreen = () => {
     };
 
     const openComments = async (item) => {
-        console.log('🚪 Opening comments for item:', item.id);
-        console.log('📊 Item stats before modal:', { likes: item.likes_count, comments: item.comments_count });
+        console.log('🚪 NewsScreen: Opening comments for item:', item.id);
+        console.log('📊 NewsScreen: Item stats before modal:', {
+            likes: item.likes_count,
+            comments: item.comments_count
+        });
 
-        // POPRAWKA: Pobierz najnowsze dane z bazy przed otwarciem modala
+        // Pobierz najnowsze dane z bazy przed otwarciem modala
         try {
             const { data: freshData, error } = await supabase
                 .from('infoapp_news')
@@ -246,75 +359,22 @@ const NewsScreen = () => {
                     comments_count: freshData.comments_count || 0
                 };
 
-                console.log('📊 Fresh data from DB:', freshData);
-                console.log('📊 Updated item for modal:', updatedItem);
+                console.log('📊 NewsScreen: Fresh data from DB:', freshData);
+                console.log('📊 NewsScreen: Updated item for modal:', updatedItem);
 
                 setSelectedItem(updatedItem);
             } else {
-                console.log('📊 Using original item data');
+                console.log('📊 NewsScreen: Using original item data');
                 setSelectedItem(item);
             }
         } catch (error) {
-            console.error('Error fetching fresh data:', error);
+            console.error('NewsScreen: Error fetching fresh data:', error);
             setSelectedItem(item);
         }
 
         setModalVisible(true);
     };
 
-    const handleLike = async (newsId, shouldLike) => {
-        try {
-            const user = await userService.getCurrentUser();
-            if (!user?.id) {
-                Alert.alert('Info', 'Musisz być zalogowany');
-                return;
-            }
-
-            console.log('NewsScreen handleLike:', newsId, shouldLike);
-
-            const currentNews = news.find(item => item.id === newsId);
-            if (!currentNews) return;
-
-            const currentIsLiked = currentNews.isLikedByUser || false;
-
-            const newLikesCount = shouldLike
-                ? (currentNews.likes_count || 0) + 1
-                : Math.max((currentNews.likes_count || 0) - 1, 0);
-
-            setNews(prev =>
-                prev.map(item =>
-                    item.id === newsId
-                        ? {
-                            ...item,
-                            likes_count: newLikesCount,
-                            isLikedByUser: shouldLike
-                        }
-                        : item
-                )
-            );
-
-            const response = await newsService.toggleLike(newsId, user.id, currentIsLiked);
-
-            if (!response.success) {
-                console.error('Toggle like failed:', response);
-                setNews(prev =>
-                    prev.map(item =>
-                        item.id === newsId
-                            ? {
-                                ...item,
-                                likes_count: currentNews.likes_count,
-                                isLikedByUser: currentIsLiked
-                            }
-                            : item
-                    )
-                );
-                Alert.alert('Błąd', 'Nie udało się zaktualizować polubienia');
-            }
-        } catch (error) {
-            console.error('Error updating like:', error);
-            Alert.alert('Błąd', 'Wystąpił problem z polubienieм');
-        }
-    };
 
     const renderCategoryFilter = () => (
         <View style={styles.categoriesContainer}>
@@ -392,15 +452,24 @@ const NewsScreen = () => {
         </View>
     );
 
-    const renderNewsItem = ({ item }) => (
-        <NewsCard
-            news={item}
-            onPress={openComments}
-            onLike={handleLike}
-            onComment={openComments}
-            isLiked={item.isLikedByUser || false}
-        />
-    );
+    const renderNewsItem = ({ item }) => {
+        console.log('NewsScreen: Rendering news item:', {
+            id: item.id,
+            likes: item.likes_count,
+            comments: item.comments_count,
+            isLiked: item.isLikedByUser
+        });
+
+        return (
+            <NewsCard
+                news={item}
+                onPress={openComments}
+                onLike={handleLike}
+                onComment={openComments}
+                isLiked={item.isLikedByUser || false}
+            />
+        );
+    };
 
     const renderEmptyState = () => (
         <View style={styles.emptyState}>
@@ -443,6 +512,7 @@ const NewsScreen = () => {
                     />
                 }
                 showsVerticalScrollIndicator={false}
+                extraData={news} // DODANE: wymusza re-render gdy news się zmieni
             />
 
             {loading && (
@@ -450,13 +520,14 @@ const NewsScreen = () => {
                     <Text style={styles.loadingText}>Ładowanie newsów...</Text>
                 </View>
             )}
+
             <CommentModal
-                key={selectedItem?.id}
+                key={selectedItem?.id} // Wymusza re-render przy zmianie item
                 visible={modalVisible}
                 onClose={closeModal}
                 item={selectedItem}
-                onCommentAdded={handleCommentUpdate}
-                onLikeUpdate={handleLikeUpdate}
+                onCommentAdded={handleCommentUpdate}  // KLUCZOWE: obsługa komentarzy
+                onLikeUpdate={handleLikeUpdate}       // KLUCZOWE: obsługa polubień
             />
         </SafeAreaView>
     );
