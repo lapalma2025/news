@@ -1,4 +1,4 @@
-// src/components/news/NewsCard.js - NAPRAWIONY
+// src/components/news/NewsCard.js - KOMPLETNIE POPRAWIONY
 import React, { useState, useEffect } from 'react';
 import {
     View,
@@ -15,14 +15,34 @@ import { COLORS } from '../../styles/colors';
 import { newsService } from '../../services/newsService';
 import { userService } from '../../services/userService';
 
-const NewsCard = ({ news, onPress, onComment, onLike }) => {
-    const [liked, setLiked] = useState(false);
+const NewsCard = ({ news, onPress, onComment, onLike, isLiked = false }) => {
     const [likesCount, setLikesCount] = useState(news.likes_count || 0);
     const [commentsCount, setCommentsCount] = useState(news.comments_count || 0);
     const [isFavorite, setIsFavorite] = useState(false);
     const [isLiking, setIsLiking] = useState(false);
     const [currentUser, setCurrentUser] = useState(null);
     const [subscription, setSubscription] = useState(null);
+    const [liked, setLiked] = useState(isLiked);
+
+    // POPRAWKA 1: Reaguj na zmiany w props news
+    useEffect(() => {
+        console.log('NewsCard: news props changed', {
+            id: news.id,
+            likes: news.likes_count,
+            comments: news.comments_count,
+            isLikedByUser: news.isLikedByUser
+        });
+
+        setLikesCount(news.likes_count || 0);
+        setCommentsCount(news.comments_count || 0);
+        setLiked(news.isLikedByUser || isLiked);
+    }, [news.likes_count, news.comments_count, news.isLikedByUser]);
+
+    // POPRAWKA 2: Reaguj na zmiany w props isLiked
+    useEffect(() => {
+        console.log('NewsCard: isLiked prop changed', isLiked);
+        setLiked(isLiked);
+    }, [isLiked]);
 
     useEffect(() => {
         initializeCard();
@@ -41,10 +61,17 @@ const NewsCard = ({ news, onPress, onComment, onLike }) => {
             setCurrentUser(user);
 
             if (user) {
-                // Sprawdź czy użytkownik polubił artykuł
-                const likedResponse = await newsService.checkIfLiked(news.id, user.id);
-                if (likedResponse.success) {
-                    setLiked(likedResponse.data);
+                // POPRAWKA 3: Sprawdź czy już mamy informację o polubienium w props
+                if (news.isLikedByUser !== undefined) {
+                    console.log('NewsCard: Using isLikedByUser from props', news.isLikedByUser);
+                    setLiked(news.isLikedByUser);
+                } else {
+                    // Sprawdź w bazie tylko jeśli nie ma informacji w props
+                    console.log('NewsCard: Checking like status from database');
+                    const likedResponse = await newsService.checkIfLiked(news.id, user.id);
+                    if (likedResponse.success) {
+                        setLiked(likedResponse.data);
+                    }
                 }
 
                 // Sprawdź czy artykuł jest w ulubionych
@@ -59,6 +86,7 @@ const NewsCard = ({ news, onPress, onComment, onLike }) => {
     const setupRealtimeSubscription = () => {
         const sub = newsService.subscribeToNews((payload) => {
             if (payload.eventType === 'UPDATE' && payload.new.id === news.id) {
+                console.log('NewsCard: Real-time update received', payload.new);
                 // Aktualizuj liczniki w czasie rzeczywistym
                 setLikesCount(payload.new.likes_count || 0);
                 setCommentsCount(payload.new.comments_count || 0);
@@ -75,11 +103,17 @@ const NewsCard = ({ news, onPress, onComment, onLike }) => {
 
         if (isLiking) return;
 
+        console.log('NewsCard: handleLike called', { currentLiked: liked, currentCount: likesCount });
+
         setIsLiking(true);
 
         // Optymistyczna aktualizacja UI
         const newLikedState = !liked;
-        const newLikesCount = newLikedState ? likesCount + 1 : likesCount - 1;
+        const newLikesCount = newLikedState
+            ? Math.max(likesCount + 1, 1)
+            : Math.max(likesCount - 1, 0);
+
+        console.log('NewsCard: Optimistic update', { newLiked: newLikedState, newCount: newLikesCount });
 
         setLiked(newLikedState);
         setLikesCount(newLikesCount);
@@ -88,22 +122,26 @@ const NewsCard = ({ news, onPress, onComment, onLike }) => {
             const response = await newsService.toggleLike(news.id, currentUser.id, liked);
 
             if (response.success) {
+                console.log('NewsCard: Like toggle successful');
+
                 if (newLikedState) {
                     await userService.incrementLikes();
                 }
 
-                // Powiadom rodzica o zmianie
+                // POPRAWKA 4: Powiadom rodzica o zmianie
                 if (onLike) {
+                    console.log('NewsCard: Notifying parent about like change');
                     onLike(news.id, newLikedState);
                 }
             } else {
+                console.error('NewsCard: Like toggle failed, rolling back');
                 // Rollback w przypadku błędu
                 setLiked(liked);
                 setLikesCount(likesCount);
                 Alert.alert('Błąd', 'Nie udało się zaktualizować polubienia');
             }
         } catch (error) {
-            console.error('Error toggling like:', error);
+            console.error('NewsCard: Error toggling like:', error);
             // Rollback w przypadku błędu
             setLiked(liked);
             setLikesCount(likesCount);
@@ -212,7 +250,7 @@ const NewsCard = ({ news, onPress, onComment, onLike }) => {
                 </View>
             </TouchableOpacity>
 
-            {/* Akcje - NOWA SEKCJA Z SERDUSZKIEM */}
+            {/* Akcje - SEKCJA Z REAKTYWNYM SERDUSZKIEM */}
             <View style={styles.actionButtons}>
                 {/* Przycisk polubienia */}
                 <TouchableOpacity
@@ -229,7 +267,7 @@ const NewsCard = ({ news, onPress, onComment, onLike }) => {
                         styles.actionText,
                         liked && styles.actionTextLiked
                     ]}>
-                        {likesCount || 0}
+                        {isLiking ? '...' : (likesCount || 0)}
                     </Text>
                 </TouchableOpacity>
 
@@ -326,7 +364,7 @@ const styles = StyleSheet.create({
         fontSize: 12,
         color: COLORS.gray,
     },
-    // NOWE STYLE DLA AKCJI
+    // STYLE DLA REAKTYWNYCH AKCJI
     actionButtons: {
         flexDirection: 'row',
         justifyContent: 'space-around',

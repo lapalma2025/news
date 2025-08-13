@@ -1,5 +1,6 @@
 // src/screens/NewsScreen.js
 import React, { useState, useEffect } from 'react';
+import { AppState } from 'react-native';
 import {
     View,
     Text,
@@ -13,6 +14,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { userService } from '../services/userService';
 import { LinearGradient } from 'expo-linear-gradient';
 
 import { COLORS } from '../styles/colors';
@@ -44,6 +46,20 @@ const NewsScreen = () => {
     const [newsSubscription, setNewsSubscription] = useState(null);
 
     useEffect(() => {
+        const handleAppStateChange = (nextAppState) => {
+            if (nextAppState === 'active') {
+                loadNews();
+            }
+        };
+
+        const subscription = AppState.addEventListener('change', handleAppStateChange);
+
+        return () => {
+            subscription?.remove();
+        };
+    }, []);
+
+    useEffect(() => {
         loadNews();
         setupRealtimeSubscription();
 
@@ -61,13 +77,20 @@ const NewsScreen = () => {
     const loadNews = async () => {
         setLoading(true);
         try {
+            console.log('Loading news...');
             const response = await newsService.fetchNews();
+            console.log('News response:', response);
+
             if (response.success) {
+                console.log('News data:', response.data);
+                console.log('News count:', response.data.length);
                 setNews(response.data);
             } else {
+                console.error('Failed to load news:', response);
                 Alert.alert('Błąd', 'Nie udało się załadować newsów');
             }
         } catch (error) {
+            console.error('Error loading news:', error);
             Alert.alert('Błąd', 'Wystąpił problem z połączeniem');
         } finally {
             setLoading(false);
@@ -90,15 +113,89 @@ const NewsScreen = () => {
         setNewsSubscription(subscription);
     };
 
+    const handleLikeUpdate = (postId, newLikesCount, isLiked) => {
+        console.log('🔔 NewsScreen handleLikeUpdate called!');
+        console.log('- postId:', postId);
+        console.log('- newLikesCount:', newLikesCount);
+        console.log('- isLiked:', isLiked);
+
+        // Aktualizuj stan news
+        setNews(prevNews => {
+            console.log('📝 Updating news array...');
+            const updated = prevNews.map(item => {
+                if (item.id === postId) {
+                    console.log(`📝 Found item ${postId}, updating likes: ${item.likes_count} -> ${newLikesCount}`);
+                    return {
+                        ...item,
+                        likes_count: newLikesCount,
+                        isLikedByUser: isLiked
+                    };
+                }
+                return item;
+            });
+            console.log('📝 News array updated');
+            return updated;
+        });
+
+        // Aktualizuj selectedItem
+        if (selectedItem && selectedItem.id === postId) {
+            console.log('📝 Updating selectedItem too');
+            setSelectedItem(prev => ({
+                ...prev,
+                likes_count: newLikesCount,
+                isLikedByUser: isLiked
+            }));
+        }
+    };
+
+    const forceRefreshNews = async () => {
+        console.log('🔄 Force refreshing news...');
+        const response = await newsService.fetchNews();
+        if (response.success) {
+            console.log('🔄 Force refresh successful, got', response.data.length, 'items');
+            setNews(response.data);
+        }
+    };
+
+    // I zmodyfikuj closeModal:
+    const closeModal = async () => {
+        console.log('🚪 Closing modal, force refreshing...');
+        setModalVisible(false);
+
+        // Force refresh danych po zamknięciu modala
+        setTimeout(async () => {
+            console.log('🔄 Force refreshing news after modal close...');
+            await loadNews();
+        }, 300);
+    };
+
+    // Dodaj handleCommentUpdate:
+    const handleCommentUpdate = (postId, newCommentsCount) => {
+        console.log('Updating comments in news list:', postId, newCommentsCount);
+
+        setNews(prevNews =>
+            prevNews.map(item =>
+                item.id === postId
+                    ? { ...item, comments_count: newCommentsCount }
+                    : item
+            )
+        );
+
+        if (selectedItem && selectedItem.id === postId) {
+            setSelectedItem(prev => ({
+                ...prev,
+                comments_count: newCommentsCount
+            }));
+        }
+    };
+
     const filterNews = () => {
         let filtered = news;
 
-        // Filtruj według kategorii
         if (selectedCategory !== 'all') {
             filtered = filtered.filter(item => item.category === selectedCategory);
         }
 
-        // Filtruj według wyszukiwania
         if (searchQuery.trim()) {
             filtered = filtered.filter(item =>
                 item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -130,24 +227,92 @@ const NewsScreen = () => {
         }
     };
 
-    const openComments = (item) => {
-        setSelectedItem(item);
+    const openComments = async (item) => {
+        console.log('🚪 Opening comments for item:', item.id);
+        console.log('📊 Item stats before modal:', { likes: item.likes_count, comments: item.comments_count });
+
+        // POPRAWKA: Pobierz najnowsze dane z bazy przed otwarciem modala
+        try {
+            const { data: freshData, error } = await supabase
+                .from('infoapp_news')
+                .select('likes_count, comments_count')
+                .eq('id', item.id)
+                .single();
+
+            if (!error && freshData) {
+                const updatedItem = {
+                    ...item,
+                    likes_count: freshData.likes_count || 0,
+                    comments_count: freshData.comments_count || 0
+                };
+
+                console.log('📊 Fresh data from DB:', freshData);
+                console.log('📊 Updated item for modal:', updatedItem);
+
+                setSelectedItem(updatedItem);
+            } else {
+                console.log('📊 Using original item data');
+                setSelectedItem(item);
+            }
+        } catch (error) {
+            console.error('Error fetching fresh data:', error);
+            setSelectedItem(item);
+        }
+
         setModalVisible(true);
     };
 
-    const handleLike = async (newsId, isLiked) => {
+    const handleLike = async (newsId, shouldLike) => {
         try {
-            await newsService.updateLikesCount(newsId, isLiked);
-            // Optymistyczna aktualizacja UI
+            const user = await userService.getCurrentUser();
+            if (!user?.id) {
+                Alert.alert('Info', 'Musisz być zalogowany');
+                return;
+            }
+
+            console.log('NewsScreen handleLike:', newsId, shouldLike);
+
+            const currentNews = news.find(item => item.id === newsId);
+            if (!currentNews) return;
+
+            const currentIsLiked = currentNews.isLikedByUser || false;
+
+            const newLikesCount = shouldLike
+                ? (currentNews.likes_count || 0) + 1
+                : Math.max((currentNews.likes_count || 0) - 1, 0);
+
             setNews(prev =>
                 prev.map(item =>
                     item.id === newsId
-                        ? { ...item, likes_count: (item.likes_count || 0) + (isLiked ? 1 : -1) }
+                        ? {
+                            ...item,
+                            likes_count: newLikesCount,
+                            isLikedByUser: shouldLike
+                        }
                         : item
                 )
             );
+
+            const response = await newsService.toggleLike(newsId, user.id, currentIsLiked);
+
+            if (!response.success) {
+                console.error('Toggle like failed:', response);
+                setNews(prev =>
+                    prev.map(item =>
+                        item.id === newsId
+                            ? {
+                                ...item,
+                                likes_count: currentNews.likes_count,
+                                isLikedByUser: currentIsLiked
+                            }
+                            : item
+                    )
+                );
+                Alert.alert('Błąd', 'Nie udało się zaktualizować polubienia');
+            }
         } catch (error) {
             console.error('Error updating like:', error);
+            Alert.alert('Błąd', 'Wystąpił problem z polubienieм');
         }
     };
 
@@ -233,6 +398,7 @@ const NewsScreen = () => {
             onPress={openComments}
             onLike={handleLike}
             onComment={openComments}
+            isLiked={item.isLikedByUser || false}
         />
     );
 
@@ -284,11 +450,13 @@ const NewsScreen = () => {
                     <Text style={styles.loadingText}>Ładowanie newsów...</Text>
                 </View>
             )}
-
             <CommentModal
+                key={selectedItem?.id}
                 visible={modalVisible}
-                onClose={() => setModalVisible(false)}
+                onClose={closeModal}
                 item={selectedItem}
+                onCommentAdded={handleCommentUpdate}
+                onLikeUpdate={handleLikeUpdate}
             />
         </SafeAreaView>
     );

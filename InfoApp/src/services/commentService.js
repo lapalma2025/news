@@ -58,18 +58,6 @@ export const commentService = {
     // NOWE FUNKCJE DLA POLUBIEŃ KOMENTARZY
     async getCommentLikesCount(commentId) {
         try {
-            // Najpierw spróbuj pobrać z kolumny likes_count
-            const { data: commentData, error: commentError } = await supabase
-                .from('infoapp_comments')
-                .select('likes_count')
-                .eq('id', commentId)
-                .single();
-
-            if (!commentError && commentData?.likes_count !== null) {
-                return handleSupabaseSuccess(commentData.likes_count, 'getCommentLikesCount');
-            }
-
-            // Jeśli nie ma kolumny, policz ręcznie
             const { count, error } = await supabase
                 .from('infoapp_comment_likes')
                 .select('*', { count: 'exact', head: true })
@@ -84,14 +72,11 @@ export const commentService = {
 
     async checkCommentLike(commentId, userId) {
         try {
-            // Konwertuj userId na string na wypadek gdyby był innego typu
-            const userIdString = String(userId);
-
             const { data, error } = await supabase
                 .from('infoapp_comment_likes')
                 .select('id')
                 .eq('comment_id', commentId)
-                .eq('user_id', userIdString)
+                .eq('user_id', userId)
                 .limit(1);
 
             if (error) throw error;

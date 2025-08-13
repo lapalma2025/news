@@ -20,10 +20,17 @@ import { commentService } from '../../services/commentService';
 import { newsService } from '../../services/newsService';
 import { politicianService } from '../../services/politicianService';
 import { userService } from '../../services/userService';
+import { supabase } from '../../services/supabaseClient';
 
 const { width, height } = Dimensions.get('window');
 
-const CommentModal = ({ visible, onClose, item, onCommentAdded }) => {
+const CommentModal = ({ visible, onClose, item, onCommentAdded, onLikeUpdate }) => {
+    console.log('CommentModal props received:');
+    console.log('- visible:', visible);
+    console.log('- onClose:', typeof onClose);
+    console.log('- item:', item?.id);
+    console.log('- onCommentAdded:', typeof onCommentAdded);
+    console.log('- onLikeUpdate:', typeof onLikeUpdate);  //
     const [comment, setComment] = useState('');
     const [comments, setComments] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -33,17 +40,49 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded }) => {
     const [commentsCount, setCommentsCount] = useState(0);
     const [currentUser, setCurrentUser] = useState(null);
     const [commentSubscription, setCommentSubscription] = useState(null);
+    const [isLiked, setIsLiked] = useState(false);
+    const [likesCount, setLikesCount] = useState(0);
+    const [likingPost, setLikingPost] = useState(false);
+    const [contentExpanded, setContentExpanded] = useState(false);
+
+    useEffect(() => {
+        if (item) {
+            setLikesCount(item.likes_count || 0);
+            if (currentUser?.id) {
+                checkIfPostLiked(currentUser.id);
+            }
+        }
+    }, [item, currentUser]);
+
+    useEffect(() => {
+        // Aktualizuj liczniki gdy item się zmieni (np. z parent component)
+        if (item && visible) {
+            console.log('CommentModal - item changed, updating counts:', item.likes_count, item.comments_count);
+            setLikesCount(item.likes_count || 0);
+            setCommentsCount(item.comments_count || 0);
+
+            // Zaktualizuj stan polubienia jeśli mamy użytkownika
+            if (currentUser?.id) {
+                checkIfPostLiked(currentUser.id);
+            }
+        }
+    }, [item?.likes_count, item?.comments_count, visible, currentUser?.id]);
 
     useEffect(() => {
         if (visible && item) {
             console.log('CommentModal opened for item:', item.id);
             initializeData();
         } else {
-            // Reset stanu gdy modal się zamyka
+            // POPRAWKA: Reset wszystkich stanów
             setComment('');
             setUserName('');
             setShowNameInput(true);
             setComments([]);
+            setContentExpanded(false);
+            setIsLiked(false);  // DODANE
+            setLikesCount(0);   // DODANE
+            setCommentsCount(0); // DODANE
+
             if (commentSubscription) {
                 commentService.unsubscribeFromComments(commentSubscription);
                 setCommentSubscription(null);
@@ -59,6 +98,11 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded }) => {
 
     const initializeData = async () => {
         try {
+            console.log('🔄 CommentModal initializeData called');
+            console.log('- item received:', item);
+            console.log('- item.likes_count:', item?.likes_count);
+            console.log('- item.comments_count:', item?.comments_count);
+
             const user = await userService.getCurrentUser();
             setCurrentUser(user);
 
@@ -68,11 +112,206 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded }) => {
                 setShowNameInput(false);
             }
 
-            setCommentsCount(item.comments_count || 0);
+            // POPRAWKA: Ustaw liczniki z przekazanego item
+            const itemCommentsCount = item?.comments_count || 0;
+            const itemLikesCount = item?.likes_count || 0;
+
+            console.log('📊 Setting initial counts:', { comments: itemCommentsCount, likes: itemLikesCount });
+            setCommentsCount(itemCommentsCount);
+            setLikesCount(itemLikesCount);
+
+            // Sprawdź stan polubienia z bazy danych (prawdziwy stan)
+            if (user?.id) {
+                console.log('👤 Checking if user liked post...');
+                await checkIfPostLiked(user.id);
+            }
+
             await loadComments();
             setupRealtimeComments();
         } catch (error) {
             console.error('Error initializing data:', error);
+        }
+    };
+
+    const checkIfPostLiked = async (userId) => {
+        try {
+            const postType = item.politician_name ? 'politician_post' : 'news';
+
+            console.log('🔍 Checking if post liked:', { postId: item.id, userId, postType });
+
+            const { data, error } = await supabase
+                .from('infoapp_likes')
+                .select('id')
+                .eq('post_id', item.id)
+                .eq('post_type', postType)
+                .eq('user_id', userId)
+                .limit(1);
+
+            if (!error) {
+                const userLiked = data.length > 0;
+                console.log('👍 User liked status:', userLiked);
+                setIsLiked(userLiked);
+
+                // DODAJ: Pobierz rzeczywisty licznik z bazy danych
+                const tableName = postType === 'news' ? 'infoapp_news' : 'infoapp_politician_posts';
+                const { data: postData, error: postError } = await supabase
+                    .from(tableName)
+                    .select('likes_count')
+                    .eq('id', item.id)
+                    .single();
+
+                if (!postError && postData) {
+                    const realLikesCount = postData.likes_count || 0;
+                    console.log('📊 Real likes count from DB:', realLikesCount);
+                    console.log('📊 Item likes count:', item?.likes_count);
+
+                    if (realLikesCount !== item?.likes_count) {
+                        console.log('⚠️ Counts mismatch! Updating to real count:', realLikesCount);
+                        setLikesCount(realLikesCount);
+
+                        // Powiadom parent o prawdziwym stanie
+                        if (onLikeUpdate) {
+                            onLikeUpdate(item.id, realLikesCount, userLiked);
+                        }
+                    } else {
+                        setLikesCount(realLikesCount);
+                    }
+                }
+            } else {
+                console.error('Error checking if post liked:', error);
+                setIsLiked(false);
+            }
+        } catch (error) {
+            console.error('Error checking if post liked:', error);
+            setIsLiked(false);
+        }
+    };
+
+    const togglePostLike = async () => {
+        if (!currentUser || likingPost) return;
+
+        try {
+            setLikingPost(true);
+            const postType = item.politician_name ? 'politician_post' : 'news';
+            const tableName = postType === 'news' ? 'infoapp_news' : 'infoapp_politician_posts';
+
+            console.log('CommentModal togglePostLike - current state:', isLiked, likesCount);
+
+            // Zapisz aktualny stan przed zmianą
+            const currentIsLiked = isLiked;
+            const currentLikes = likesCount;
+            const newIsLiked = !currentIsLiked;
+            const newLikesCount = currentIsLiked ? currentLikes - 1 : currentLikes + 1;
+
+            // Optymistyczna aktualizacja UI
+            setIsLiked(newIsLiked);
+            setLikesCount(newLikesCount);
+
+            let success = false;
+
+            if (currentIsLiked) {
+                // USUŃ POLUBIENIE
+                console.log('CommentModal - removing like...');
+
+                const { error } = await supabase
+                    .from('infoapp_likes')
+                    .delete()
+                    .eq('post_id', item.id)
+                    .eq('post_type', postType)
+                    .eq('user_id', currentUser.id);
+
+                if (!error) {
+                    // Zmniejsz licznik w tabeli
+                    const { error: updateError } = await supabase
+                        .from(tableName)
+                        .update({
+                            likes_count: Math.max(currentLikes - 1, 0)
+                        })
+                        .eq('id', item.id);
+
+                    success = !updateError;
+                    if (updateError) {
+                        console.error('Error updating likes count:', updateError);
+                    }
+                } else {
+                    console.error('Error deleting like:', error);
+                }
+            } else {
+                // DODAJ POLUBIENIE
+                console.log('CommentModal - adding like...');
+
+                // Sprawdź czy już nie istnieje
+                const { data: existing } = await supabase
+                    .from('infoapp_likes')
+                    .select('id')
+                    .eq('post_id', item.id)
+                    .eq('post_type', postType)
+                    .eq('user_id', currentUser.id)
+                    .limit(1);
+
+                if (existing && existing.length > 0) {
+                    console.log('Like already exists');
+                    success = true;
+                } else {
+                    const { error } = await supabase
+                        .from('infoapp_likes')
+                        .insert([{
+                            post_id: item.id,
+                            post_type: postType,
+                            user_id: currentUser.id,
+                            created_at: new Date().toISOString()
+                        }]);
+
+                    if (!error || error.code === '23505') { // 23505 = duplikat
+                        // Zwiększ licznik w tabeli
+                        const { error: updateError } = await supabase
+                            .from(tableName)
+                            .update({
+                                likes_count: currentLikes + 1
+                            })
+                            .eq('id', item.id);
+
+                        success = !updateError;
+                        if (updateError) {
+                            console.error('Error updating likes count:', updateError);
+                        }
+                    } else {
+                        console.error('Error inserting like:', error);
+                    }
+                }
+            }
+
+            if (!success) {
+                // Rollback w przypadku błędu
+                console.log('CommentModal - rolling back like change');
+                setIsLiked(currentIsLiked);
+                setLikesCount(currentLikes);
+                Alert.alert('Błąd', 'Nie udało się zaktualizować polubienia');
+            } else {
+                console.log('CommentModal - like change successful, notifying parent');
+                console.log('New state:', newIsLiked, newLikesCount);
+
+                // KLUCZOWE: Powiadom parent component o zmianie
+                if (onLikeUpdate) {
+                    console.log('CommentModal calling onLikeUpdate:', item.id, newLikesCount, newIsLiked);
+                    onLikeUpdate(item.id, newLikesCount, newIsLiked);
+                }
+
+                // Zaktualizuj również sam item dla przyszłych wywołań
+                if (item) {
+                    item.likes_count = newLikesCount;
+                    item.isLikedByUser = newIsLiked;
+                }
+            }
+
+        } catch (error) {
+            console.error('CommentModal - Error toggling post like:', error);
+            // Rollback
+            setIsLiked(currentIsLiked);
+            setLikesCount(currentLikes);
+            Alert.alert('Błąd', 'Wystąpił problem z polubienie posta');
+        } finally {
+            setLikingPost(false);
         }
     };
 
@@ -95,19 +334,20 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded }) => {
                         let likes = 0;
                         let isLiked = false;
 
-                        // Sprawdź czy istnieją funkcje do polubień
+                        // POPRAWKA: Używaj prawidłowych funkcji
                         try {
-                            if (commentService.getCommentLikesCount) {
-                                const likesResponse = await commentService.getCommentLikesCount(commentItem.id);
-                                likes = likesResponse.success ? likesResponse.data : 0;
-                            }
+                            const likesResponse = await commentService.getCommentLikesCount(commentItem.id);
+                            likes = likesResponse.success ? likesResponse.data : 0;
 
-                            if (currentUser && commentService.checkCommentLike) {
+                            if (currentUser) {
                                 const likedResponse = await commentService.checkCommentLike(commentItem.id, currentUser.id);
                                 isLiked = likedResponse.success ? likedResponse.data : false;
                             }
                         } catch (error) {
-                            console.log('Likes functions not available:', error.message);
+                            console.log('Error loading comment likes:', error);
+                            // Wartości domyślne w przypadku błędu
+                            likes = 0;
+                            isLiked = false;
                         }
 
                         return {
@@ -294,7 +534,7 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded }) => {
                     } else {
                         // Bezpośrednia aktualizacja licznika dla wpisów polityków
                         const { error: updateError } = await supabase
-                            .from('politician_posts')
+                            .from('infoapp_politician_posts')
                             .update({
                                 comments_count: supabase.raw('COALESCE(comments_count, 0) + 1')
                             })
@@ -412,6 +652,18 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded }) => {
         }
     };
 
+    const shouldShowReadMore = (text) => {
+        return text && text.length > 200; // To sprawdza ZNAKI, nie słowa
+    };
+
+    const getDisplayContent = (text) => {
+        if (!text) return '';
+        if (!shouldShowReadMore(text) || contentExpanded) {
+            return text;
+        }
+        return text.substring(0, 200) + '...';
+    };;
+
     if (!item) return null;
 
     return (
@@ -441,11 +693,26 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded }) => {
                     </LinearGradient>
 
                     {/* Oryginalny post */}
+                    {/* Oryginalny post */}
                     <View style={styles.originalPost}>
                         <Text style={styles.originalTitle}>{item.title}</Text>
-                        <Text style={styles.originalContent} numberOfLines={3}>
-                            {item.content}
+
+                        {/* Rozwijana treść */}
+                        <Text style={styles.originalContent}>
+                            {getDisplayContent(item.content)}
                         </Text>
+                        {/* Przycisk "Czytaj więcej" / "Zwiń" */}
+                        {shouldShowReadMore(item.content) && (
+                            <TouchableOpacity
+                                onPress={() => setContentExpanded(!contentExpanded)}
+                                style={styles.readMoreButton}
+                            >
+                                <Text style={styles.readMoreText}>
+                                    {contentExpanded ? 'Zwiń' : 'Zobacz więcej'}
+                                </Text>
+                            </TouchableOpacity>
+                        )}
+
                         <View style={styles.originalMeta}>
                             <Text style={styles.originalAuthor}>
                                 {item.author || item.politician_name || 'Autor'}
@@ -455,12 +722,25 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded }) => {
                             </Text>
                         </View>
 
-                        {/* Statystyki posta */}
+                        {/* Statystyki posta z możliwością polubienia */}
                         <View style={styles.postStats}>
-                            <View style={styles.statItem}>
-                                <Ionicons name="heart" size={16} color={COLORS.red} />
-                                <Text style={styles.statText}>{item.likes_count || 0} polubień</Text>
-                            </View>
+                            <TouchableOpacity
+                                style={[styles.statItem, styles.likeButton]}
+                                onPress={togglePostLike}
+                                disabled={likingPost}
+                            >
+                                <Ionicons
+                                    name={isLiked ? "heart" : "heart-outline"}
+                                    size={18}
+                                    color={isLiked ? COLORS.red : COLORS.gray}
+                                />
+                                <Text style={[
+                                    styles.statText,
+                                    isLiked && { color: COLORS.red, fontWeight: 'bold' }
+                                ]}>
+                                    {likingPost ? '...' : likesCount} polubień
+                                </Text>
+                            </TouchableOpacity>
                             <View style={styles.statItem}>
                                 <Ionicons name="chatbubble" size={16} color={COLORS.primary} />
                                 <Text style={styles.statText}>{commentsCount} komentarzy</Text>
@@ -652,7 +932,20 @@ const styles = StyleSheet.create({
         fontSize: 14,
         color: COLORS.gray,
         lineHeight: 20,
+        marginBottom: 8,
+    },
+    readMoreButton: {
+        alignSelf: 'flex-start',
         marginBottom: 12,
+        paddingVertical: 4,
+        paddingHorizontal: 8,
+        backgroundColor: COLORS.primary + '10',
+        borderRadius: 12,
+    },
+    readMoreText: {
+        fontSize: 14,
+        color: COLORS.primary,
+        fontWeight: '600',
     },
     originalMeta: {
         flexDirection: 'row',
@@ -679,6 +972,9 @@ const styles = StyleSheet.create({
     statItem: {
         flexDirection: 'row',
         alignItems: 'center',
+        paddingVertical: 8,
+        paddingHorizontal: 12,
+        borderRadius: 20,
     },
     statText: {
         fontSize: 14,
@@ -771,6 +1067,7 @@ const styles = StyleSheet.create({
         paddingVertical: 4,
         paddingHorizontal: 8,
         borderRadius: 12,
+        backgroundColor: COLORS.lightGray + '50',
     },
     commentLikeText: {
         fontSize: 12,
@@ -819,11 +1116,6 @@ const styles = StyleSheet.create({
         color: COLORS.gray,
         marginTop: 4,
         marginLeft: 4,
-    },
-    commentInputRow: {
-        flexDirection: 'row',
-        alignItems: 'flex-end',
-        marginBottom: 8,
     },
     commentInputRow: {
         flexDirection: 'row',
