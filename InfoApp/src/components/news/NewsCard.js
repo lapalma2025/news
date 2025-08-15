@@ -1,4 +1,4 @@
-// src/components/news/NewsCard.js - OSTATECZNIE POPRAWIONY
+// src/components/news/NewsCard.js - OSTATECZNIE POPRAWIONY z historią czytania
 import React, { useState, useEffect } from 'react';
 import {
     View,
@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../styles/colors';
 import { newsService } from '../../services/newsService';
 import { userService } from '../../services/userService';
+import { readingHistoryService } from '../../services/readingHistoryService'; // DODANY IMPORT
 
 const NewsCard = ({ news, onPress, onComment, onLike, isLiked = false }) => {
     const [likesCount, setLikesCount] = useState(news.likes_count || 0);
@@ -70,20 +71,23 @@ const NewsCard = ({ news, onPress, onComment, onLike, isLiked = false }) => {
                     }
                 }
 
-                // Sprawdź czy artykuł jest w ulubionych
-                const favorites = user.stats?.favoriteArticles || [];
-                setIsFavorite(favorites.some(fav => fav.id === news.id));
+                // Sprawdź czy artykuł jest w ulubionych (jeśli masz tę funkcję)
+                if (userService.getUserSettings) {
+                    try {
+                        const settings = await userService.getUserSettings(user.id);
+                        const favorites = settings.favoriteArticles || [];
+                        setIsFavorite(favorites.some(fav => fav.id === news.id));
+                    } catch (error) {
+                        console.log('Favorites not available');
+                    }
+                }
             }
         } catch (error) {
             console.error('Error initializing card:', error);
         }
     };
 
-
-
     // TYLKO deleguj do parent - ZERO lokalnej logiki API
-    // W NewsCard.js - ZASTĄP handleLike() tym prostym kodem:
-
     const handleLike = () => {
         if (!currentUser) {
             Alert.alert('Info', 'Zaloguj się, aby polubić artykuł');
@@ -92,21 +96,28 @@ const NewsCard = ({ news, onPress, onComment, onLike, isLiked = false }) => {
 
         console.log('NewsCard: Delegating to parent - news.id:', news.id, 'current liked:', liked);
 
-
         if (onLike) {
             onLike(news.id, !liked);
         }
     };
 
     const handleComment = async () => {
-        try {
-            await userService.addToReadHistory(news.id, news.title, 'news');
-        } catch (error) {
-            console.error('Error adding to read history:', error);
-        }
+        if (!news) return;
 
-        if (onComment) {
-            onComment(news);
+        try {
+            // ZAPISZ DO HISTORII CZYTANIA - NOWY SYSTEM
+            console.log('Marking article as read:', news.id, news.title);
+            await readingHistoryService.markAsRead(news.id, 'news');
+
+            if (onComment) {
+                onComment(news);
+            }
+        } catch (error) {
+            console.error('Error handling comment:', error);
+            // Mimo błędu, pozwól na otwarcie komentarzy
+            if (onComment) {
+                onComment(news);
+            }
         }
     };
 
@@ -120,12 +131,19 @@ const NewsCard = ({ news, onPress, onComment, onLike, isLiked = false }) => {
             if (isFavorite) {
                 await userService.removeFromFavorites(news.id);
                 setIsFavorite(false);
+                console.log('💔 Removed from favorites:', news.title);
                 Alert.alert('Usunięto', 'Artykuł został usunięty z ulubionych');
             } else {
                 await userService.addToFavorites(news.id, 'news');
                 setIsFavorite(true);
+                console.log('❤️ Added to favorites:', news.title);
                 Alert.alert('Dodano', 'Artykuł został dodany do ulubionych');
             }
+
+            // Wyemituj event żeby ProfileScreen się odświeżył (jeśli używasz EventEmitter)
+            // Lub po prostu loguj że trzeba odświeżyć statystyki
+            console.log('🔄 Favorites changed - ProfileScreen should refresh stats');
+
         } catch (error) {
             console.error('Error toggling favorite:', error);
             Alert.alert('Błąd', 'Nie udało się zaktualizować ulubionych');
@@ -133,15 +151,22 @@ const NewsCard = ({ news, onPress, onComment, onLike, isLiked = false }) => {
     };
 
     const handlePress = async () => {
-        // Dodaj do historii czytania przy kliknięciu
-        try {
-            await userService.addToReadHistory(news.id, news.title, 'news');
-        } catch (error) {
-            console.error('Error adding to read history:', error);
-        }
+        if (!news) return;
 
-        if (onPress) {
-            onPress(news);
+        try {
+            // ZAPISZ DO HISTORII CZYTANIA - NOWY SYSTEM
+            console.log('Marking article as read:', news.id, news.title);
+            await readingHistoryService.markAsRead(news.id, 'news');
+
+            if (onPress) {
+                onPress(news);
+            }
+        } catch (error) {
+            console.error('Error handling press:', error);
+            // Mimo błędu, pozwól na przejście dalej
+            if (onPress) {
+                onPress(news);
+            }
         }
     };
 

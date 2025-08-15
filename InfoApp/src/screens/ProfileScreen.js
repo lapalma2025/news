@@ -1,12 +1,14 @@
-// src/screens/ProfileScreen.js - Z prawdziwą nawigacją używając istniejących komponentów
+// src/screens/ProfileScreen.js - Z prawdziwymi statystykami
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useFocusEffect } from '@react-navigation/native'; // DODANE
 import { COLORS } from '../styles/colors';
 import { APP_CONFIG } from '../utils/constants';
 import { userService } from '../services/userService';
+import { readingHistoryService } from '../services/readingHistoryService'; // DODANE
 
 import NotificationSettingsScreen from './profile/NotificationSettingsScreen';
 import FavoriteArticlesScreen from './profile/FavoriteArticlesScreen';
@@ -19,11 +21,28 @@ import RateAppScreen from './profile/RateAppScreen';
 
 const ProfileScreen = () => {
     const [user, setUser] = useState(null);
+    const [stats, setStats] = useState({ // DODANE - osobny state dla statystyk
+        readArticles: 0,
+        favoriteArticles: 0,
+        comments: 0,
+        likedPosts: 0
+    });
     const [loading, setLoading] = useState(true);
-    const [activeScreen, setActiveScreen] = useState('main'); // main, NotificationSettings, FavoriteArticles, etc.
+    const [activeScreen, setActiveScreen] = useState('main');
+
+    // Załaduj dane gdy ekran się focusuje (wraca z innych ekranów)
+    useFocusEffect(
+        React.useCallback(() => {
+            if (activeScreen === 'main') {
+                loadUserData();
+                loadRealStats(); // DODANE
+            }
+        }, [activeScreen])
+    );
 
     useEffect(() => {
         loadUserData();
+        loadRealStats(); // DODANE
     }, []);
 
     const loadUserData = async () => {
@@ -37,12 +56,67 @@ const ProfileScreen = () => {
         }
     };
 
+    // NAPRAWIONA FUNKCJA - Pobierz prawdziwe statystyki z właściwych miejsc
+    const loadRealStats = async () => {
+        try {
+            const currentUser = await userService.getCurrentUser();
+            if (!currentUser) return;
+
+            console.log('📊 Loading real stats for user:', currentUser.id);
+
+            // 1. HISTORIA CZYTANIA - z nowego systemu (read_by w tabelach)
+            const historyResult = await readingHistoryService.getReadingHistory(currentUser.id);
+            const readArticlesCount = historyResult.success ? historyResult.data.length : 0;
+
+            // 2. ULUBIONE - z AsyncStorage (currentUser.stats.favoriteArticles)
+            const favoriteArticlesCount = currentUser.stats?.favoriteArticles?.length || 0;
+
+            // 3. KOMENTARZE - z AsyncStorage (currentUser.stats.comments)
+            const commentsCount = currentUser.stats?.comments || 0;
+
+            // 4. POLUBIENIA - z AsyncStorage (currentUser.stats.likedPosts)
+            const likedPostsCount = currentUser.stats?.likedPosts || 0;
+
+            const newStats = {
+                readArticles: readArticlesCount,
+                favoriteArticles: favoriteArticlesCount,
+                comments: commentsCount,
+                likedPosts: likedPostsCount
+            };
+
+            console.log('📈 Current user stats from AsyncStorage:', {
+                favoriteArticles: currentUser.stats?.favoriteArticles,
+                favoriteCount: favoriteArticlesCount,
+                comments: commentsCount,
+                likedPosts: likedPostsCount
+            });
+
+            console.log('📈 Updated stats:', newStats);
+            setStats(newStats);
+
+        } catch (error) {
+            console.error('Error loading real stats:', error);
+            // Fallback do wszystkich statystyk z AsyncStorage
+            const currentUser = await userService.getCurrentUser();
+            if (currentUser) {
+                setStats({
+                    readArticles: currentUser.stats?.readArticles || 0,
+                    favoriteArticles: currentUser.stats?.favoriteArticles?.length || 0,
+                    comments: currentUser.stats?.comments || 0,
+                    likedPosts: currentUser.stats?.likedPosts || 0
+                });
+            }
+        }
+    };
+
     const navigateToScreen = (screenName) => {
         setActiveScreen(screenName);
     };
 
     const navigateBack = () => {
         setActiveScreen('main');
+        // Odśwież statystyki po powrocie z innych ekranów
+        loadRealStats();
     };
 
     const handleShare = () => {
@@ -81,7 +155,7 @@ const ProfileScreen = () => {
         const userData = await userService.exportUserData();
         Alert.alert(
             'Eksport danych',
-            `Dane użytkownika:\n\nID: ${userData?.id}\nUtworzono: ${new Date(userData?.createdAt).toLocaleDateString()}\nPrzeczytane artykuły: ${userData?.stats?.readArticles || 0}\nKomentarze: ${userData?.stats?.comments || 0}\nPolubienia: ${userData?.stats?.likedPosts || 0}`,
+            `Dane użytkownika:\n\nID: ${userData?.id}\nUtworzono: ${new Date(userData?.createdAt).toLocaleDateString()}\nPrzeczytane artykuły: ${stats.readArticles}\nKomentarze: ${stats.comments}\nPolubienia: ${stats.likedPosts}`,
             [{ text: 'OK' }]
         );
     };
@@ -100,6 +174,7 @@ const ProfileScreen = () => {
     const resetUserData = async () => {
         await userService.resetUser();
         await loadUserData();
+        await loadRealStats(); // DODANE
         Alert.alert('Sukces', 'Dane zostały zresetowane. Zostałeś oznaczony jako nowy użytkownik.');
     };
 
@@ -237,21 +312,28 @@ const ProfileScreen = () => {
                     </View>
                 </LinearGradient>
 
+                {/* ZAKTUALIZOWANE STATYSTYKI - używają nowego state */}
                 <View style={styles.statsContainer}>
-                    <View style={styles.statItem}>
-                        <Text style={styles.statNumber}>{user?.stats?.readArticles || 0}</Text>
+                    <TouchableOpacity
+                        style={styles.statItem}
+                        onPress={() => {
+                            console.log('🔄 Refreshing stats manually...');
+                            loadRealStats();
+                        }}
+                    >
+                        <Text style={styles.statNumber}>{stats.readArticles}</Text>
                         <Text style={styles.statLabel}>Przeczytane</Text>
-                    </View>
+                    </TouchableOpacity>
                     <View style={styles.statItem}>
-                        <Text style={styles.statNumber}>{user?.stats?.favoriteArticles?.length || 0}</Text>
+                        <Text style={styles.statNumber}>{stats.favoriteArticles}</Text>
                         <Text style={styles.statLabel}>Ulubione</Text>
                     </View>
                     <View style={styles.statItem}>
-                        <Text style={styles.statNumber}>{user?.stats?.comments || 0}</Text>
+                        <Text style={styles.statNumber}>{stats.comments}</Text>
                         <Text style={styles.statLabel}>Komentarze</Text>
                     </View>
                     <View style={styles.statItem}>
-                        <Text style={styles.statNumber}>{user?.stats?.likedPosts || 0}</Text>
+                        <Text style={styles.statNumber}>{stats.likedPosts}</Text>
                         <Text style={styles.statLabel}>Polubienia</Text>
                     </View>
                 </View>
@@ -276,6 +358,32 @@ const ProfileScreen = () => {
                             Użytkownik od: {new Date(user.createdAt).toLocaleDateString('pl-PL')}
                         </Text>
                     )}
+
+                    {/* DEBUG INFO - ROZSZERZONY */}
+                    <TouchableOpacity
+                        onPress={async () => {
+                            console.log('🔄 Manual stats refresh...');
+
+                            // Debug: sprawdź co jest w AsyncStorage
+                            const currentUser = await userService.getCurrentUser();
+                            console.log('🗃️ FULL USER DATA from AsyncStorage:', JSON.stringify(currentUser, null, 2));
+                            console.log('📊 FAVORITES ARRAY:', currentUser?.stats?.favoriteArticles);
+                            console.log('📊 FAVORITES COUNT:', currentUser?.stats?.favoriteArticles?.length);
+                            console.log('📊 COMMENTS:', currentUser?.stats?.comments);
+                            console.log('📊 LIKED POSTS:', currentUser?.stats?.likedPosts);
+
+                            // Sprawdź historię czytania
+                            const historyResult = await readingHistoryService.getReadingHistory(currentUser.id);
+                            console.log('📚 READING HISTORY COUNT:', historyResult.success ? historyResult.data.length : 0);
+
+                            loadRealStats();
+                        }}
+                        style={{ marginTop: 10, padding: 10, backgroundColor: '#e3f2fd', borderRadius: 5 }}
+                    >
+                        <Text style={{ fontSize: 10, textAlign: 'center', color: '#1976d2' }}>
+                            🔄 Debug: Refresh Stats & Show AsyncStorage Data
+                        </Text>
+                    </TouchableOpacity>
                 </View>
             </ScrollView>
         );
@@ -334,6 +442,7 @@ const ProfileScreen = () => {
     );
 };
 
+// Style pozostają bez zmian...
 const styles = StyleSheet.create({
     container: {
         flex: 1,
@@ -367,7 +476,7 @@ const styles = StyleSheet.create({
         textAlign: 'center',
     },
     headerSpacer: {
-        width: 40, // Same width as back button to center title
+        width: 40,
     },
     header: {
         paddingVertical: 40,

@@ -81,6 +81,23 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded, onLikeUpdate }) 
         };
     }, [visible, item?.id]);
 
+    useEffect(() => {
+        if (visible && item && item.id) {
+            const markAsRead = async () => {
+                try {
+                    const articleType = item.type === 'politician_post' ? 'politician_post' : 'news';
+                    console.log('CommentModal: Marking as read:', item.id, articleType);
+
+                    await readingHistoryService.markAsRead(item.id, articleType);
+                } catch (error) {
+                    console.error('Error marking article as read in CommentModal:', error);
+                }
+            };
+
+            markAsRead();
+        }
+    }, [visible, item?.id]);
+
     const initializeData = async () => {
         try {
             console.log('🔄 CommentModal initializeData called');
