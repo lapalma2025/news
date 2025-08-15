@@ -9,6 +9,7 @@ import { COLORS } from '../styles/colors';
 import { APP_CONFIG } from '../utils/constants';
 import { userService } from '../services/userService';
 import { readingHistoryService } from '../services/readingHistoryService'; // DODANE
+import { supabase } from '../services/supabaseClient'; // DODANE dla sprawdzania ulubionych
 
 import NotificationSettingsScreen from './profile/NotificationSettingsScreen';
 import FavoriteArticlesScreen from './profile/FavoriteArticlesScreen';
@@ -56,6 +57,41 @@ const ProfileScreen = () => {
         }
     };
 
+    // NOWA FUNKCJA - sprawdza liczbę ulubionych z bazy danych (podobnie jak loadLikedArticles)
+    const loadFavoriteCount = async (userId) => {
+        try {
+            console.log('Loading favorite count for user:', userId);
+
+            // Możliwe nazwy tabel dla ulubionych w Supabase
+            const possibleTables = ['infoapp_favorites', 'infoapp_bookmarks', 'favorites', 'bookmarks'];
+
+            for (const tableName of possibleTables) {
+                try {
+                    const { count, error } = await supabase
+                        .from(tableName)
+                        .select('*', { count: 'exact', head: true })
+                        .eq('user_id', userId);
+
+                    if (!error) {
+                        console.log(`Found favorites in table ${tableName}:`, count || 0);
+                        return count || 0;
+                    }
+                } catch (tableError) {
+                    // Kontynuuj próby z następną tabelą
+                    continue;
+                }
+            }
+
+            // Jeśli nie znaleziono żadnej tabeli ulubionych w Supabase
+            console.log('No favorites table found in Supabase, using AsyncStorage');
+            return null; // będziemy używać AsyncStorage jako fallback
+
+        } catch (error) {
+            console.error('Error loading favorite count from Supabase:', error);
+            return null; // będziemy używać AsyncStorage jako fallback
+        }
+    };
+
     // NAPRAWIONA FUNKCJA - Pobierz prawdziwe statystyki z właściwych miejsc
     const loadRealStats = async () => {
         try {
@@ -68,30 +104,60 @@ const ProfileScreen = () => {
             const historyResult = await readingHistoryService.getReadingHistory(currentUser.id);
             const readArticlesCount = historyResult.success ? historyResult.data.length : 0;
 
-            // 2. ULUBIONE - z AsyncStorage (currentUser.stats.favoriteArticles)
-            const favoriteArticlesCount = currentUser.stats?.favoriteArticles?.length || 0;
+            // 2. ULUBIONE - NOWE: sprawdź najpierw w Supabase, potem AsyncStorage
+            let favoriteArticlesCount = 0;
+            const supabaseFavoriteCount = await loadFavoriteCount(currentUser.id);
+
+            if (supabaseFavoriteCount !== null) {
+                // Znaleziono w Supabase
+                favoriteArticlesCount = supabaseFavoriteCount;
+                console.log('💖 Using favorites count from Supabase:', favoriteArticlesCount);
+            } else {
+                // Fallback do AsyncStorage
+                favoriteArticlesCount = currentUser.stats?.favoriteArticles?.length || 0;
+                console.log('💾 Using favorites count from AsyncStorage:', favoriteArticlesCount);
+            }
 
             // 3. KOMENTARZE - z AsyncStorage (currentUser.stats.comments)
             const commentsCount = currentUser.stats?.comments || 0;
 
-            // 4. POLUBIENIA - z AsyncStorage (currentUser.stats.likedPosts)
-            const likedPostsCount = currentUser.stats?.likedPosts || 0;
+            // 4. POLUBIENIA - z Supabase (infoapp_likes) ⭐ NOWE
+            let likedPostsCount = 0;
+            try {
+                const { data: likesData, error: likesError } = await supabase
+                    .from('infoapp_likes')
+                    .select('id')
+                    .eq('user_id', currentUser.id);
+
+                if (likesError) {
+                    console.error('Error fetching likes from Supabase:', likesError);
+                    // Fallback do AsyncStorage
+                    likedPostsCount = currentUser.stats?.likedPosts || 0;
+                } else {
+                    likedPostsCount = likesData?.length || 0;
+                    console.log('💖 Likes from Supabase:', likedPostsCount);
+                }
+            } catch (error) {
+                console.error('Error querying likes:', error);
+                // Fallback do AsyncStorage
+                likedPostsCount = currentUser.stats?.likedPosts || 0;
+            }
 
             const newStats = {
                 readArticles: readArticlesCount,
-                favoriteArticles: favoriteArticlesCount,
+                favoriteArticles: favoriteArticlesCount, // POPRAWIONE - używa nowej funkcji
                 comments: commentsCount,
                 likedPosts: likedPostsCount
             };
 
             console.log('📈 Current user stats from AsyncStorage:', {
                 favoriteArticles: currentUser.stats?.favoriteArticles,
-                favoriteCount: favoriteArticlesCount,
+                favoriteCount: currentUser.stats?.favoriteArticles?.length || 0,
                 comments: commentsCount,
-                likedPosts: likedPostsCount
+                asyncStorageLikedPosts: currentUser.stats?.likedPosts
             });
 
-            console.log('📈 Updated stats:', newStats);
+            console.log('📈 Updated stats (with Supabase data):', newStats);
             setStats(newStats);
 
         } catch (error) {
@@ -155,7 +221,7 @@ const ProfileScreen = () => {
         const userData = await userService.exportUserData();
         Alert.alert(
             'Eksport danych',
-            `Dane użytkownika:\n\nID: ${userData?.id}\nUtworzono: ${new Date(userData?.createdAt).toLocaleDateString()}\nPrzeczytane artykuły: ${stats.readArticles}\nKomentarze: ${stats.comments}\nPolubienia: ${stats.likedPosts}`,
+            `Dane użytkownika:\n\nID: ${userData?.id}\nUtworzono: ${new Date(userData?.createdAt).toLocaleDateString()}\nPrzeczytane artykuły: ${stats.readArticles}\nUlubione artykuły: ${stats.favoriteArticles}\nKomentarze: ${stats.comments}\nPolubienia: ${stats.likedPosts}`,
             [{ text: 'OK' }]
         );
     };
@@ -312,7 +378,7 @@ const ProfileScreen = () => {
                     </View>
                 </LinearGradient>
 
-                {/* ZAKTUALIZOWANE STATYSTYKI - używają nowego state */}
+                {/* STATYSTYKI - używają nowego state z poprawną logiką */}
                 <View style={styles.statsContainer}>
                     <TouchableOpacity
                         style={styles.statItem}
@@ -325,16 +391,12 @@ const ProfileScreen = () => {
                         <Text style={styles.statLabel}>Przeczytane</Text>
                     </TouchableOpacity>
                     <View style={styles.statItem}>
-                        <Text style={styles.statNumber}>{stats.favoriteArticles}</Text>
+                        <Text style={styles.statNumber}>{stats.likedPosts}</Text>
                         <Text style={styles.statLabel}>Ulubione</Text>
                     </View>
                     <View style={styles.statItem}>
                         <Text style={styles.statNumber}>{stats.comments}</Text>
                         <Text style={styles.statLabel}>Komentarze</Text>
-                    </View>
-                    <View style={styles.statItem}>
-                        <Text style={styles.statNumber}>{stats.likedPosts}</Text>
-                        <Text style={styles.statLabel}>Polubienia</Text>
                     </View>
                 </View>
 
@@ -359,29 +421,25 @@ const ProfileScreen = () => {
                         </Text>
                     )}
 
-                    {/* DEBUG INFO - ROZSZERZONY */}
+                    {/* DEBUG INFO - sprawdza ulubione z obu źródeł */}
                     <TouchableOpacity
                         onPress={async () => {
-                            console.log('🔄 Manual stats refresh...');
+                            console.log('🔄 Manual favorites check...');
 
-                            // Debug: sprawdź co jest w AsyncStorage
                             const currentUser = await userService.getCurrentUser();
-                            console.log('🗃️ FULL USER DATA from AsyncStorage:', JSON.stringify(currentUser, null, 2));
-                            console.log('📊 FAVORITES ARRAY:', currentUser?.stats?.favoriteArticles);
-                            console.log('📊 FAVORITES COUNT:', currentUser?.stats?.favoriteArticles?.length);
-                            console.log('📊 COMMENTS:', currentUser?.stats?.comments);
-                            console.log('📊 LIKED POSTS:', currentUser?.stats?.likedPosts);
+                            console.log('📱 AsyncStorage favorites:', currentUser?.stats?.favoriteArticles);
+                            console.log('📱 AsyncStorage favorites count:', currentUser?.stats?.favoriteArticles?.length);
 
-                            // Sprawdź historię czytania
-                            const historyResult = await readingHistoryService.getReadingHistory(currentUser.id);
-                            console.log('📚 READING HISTORY COUNT:', historyResult.success ? historyResult.data.length : 0);
+                            // Sprawdź również w Supabase
+                            const supabaseFavoriteCount = await loadFavoriteCount(currentUser.id);
+                            console.log('💾 Supabase favorites count:', supabaseFavoriteCount);
 
                             loadRealStats();
                         }}
                         style={{ marginTop: 10, padding: 10, backgroundColor: '#e3f2fd', borderRadius: 5 }}
                     >
                         <Text style={{ fontSize: 10, textAlign: 'center', color: '#1976d2' }}>
-                            🔄 Debug: Refresh Stats & Show AsyncStorage Data
+                            🔄 Debug: Check Favorites (AsyncStorage + Supabase)
                         </Text>
                     </TouchableOpacity>
                 </View>
@@ -442,7 +500,6 @@ const ProfileScreen = () => {
     );
 };
 
-// Style pozostają bez zmian...
 const styles = StyleSheet.create({
     container: {
         flex: 1,

@@ -71,15 +71,15 @@ const NewsCard = ({ news, onPress, onComment, onLike, isLiked = false }) => {
                     }
                 }
 
-                // Sprawdź czy artykuł jest w ulubionych (jeśli masz tę funkcję)
-                if (userService.getUserSettings) {
-                    try {
-                        const settings = await userService.getUserSettings(user.id);
-                        const favorites = settings.favoriteArticles || [];
-                        setIsFavorite(favorites.some(fav => fav.id === news.id));
-                    } catch (error) {
-                        console.log('Favorites not available');
-                    }
+                // Sprawdź czy artykuł jest w ulubionych - POPRAWIONE
+                console.log('🔍 Checking if article is favorite:', news.id);
+                try {
+                    const isArticleFavorite = await userService.isFavorite(news.id);
+                    console.log('📖 Article favorite status:', isArticleFavorite);
+                    setIsFavorite(isArticleFavorite);
+                } catch (error) {
+                    console.error('Error checking favorite status:', error);
+                    setIsFavorite(false);
                 }
             }
         } catch (error) {
@@ -216,7 +216,11 @@ const NewsCard = ({ news, onPress, onComment, onLike, isLiked = false }) => {
                     <View style={styles.categoryBadge}>
                         <Text style={styles.categoryText}>{news.category}</Text>
                     </View>
-                    <TouchableOpacity onPress={handleFavorite}>
+                    <TouchableOpacity onPress={() => {
+                        console.log('🔖 Bookmark button pressed for article:', news.id);
+                        console.log('🔖 Current favorite status:', isFavorite);
+                        handleFavorite();
+                    }}>
                         <Ionicons
                             name={isFavorite ? "bookmark" : "bookmark-outline"}
                             size={20}
