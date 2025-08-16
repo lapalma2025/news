@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     View,
     Text,
@@ -31,6 +31,7 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded, onLikeUpdate }) 
     console.log('- item:', item?.id);
     console.log('- onCommentAdded:', typeof onCommentAdded);
     console.log('- onLikeUpdate:', typeof onLikeUpdate);  //
+    const isTogglingRef = useRef(false);
     const [comment, setComment] = useState('');
     const [comments, setComments] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -164,16 +165,15 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded, onLikeUpdate }) 
     };
 
     const togglePostLike = async () => {
-        if (!currentUser || likingPost) return;
+        if (!currentUser || isTogglingRef.current) return;
+        isTogglingRef.current = true;
 
         try {
-            setLikingPost(true);
             const postType = item.politician_name ? 'politician_post' : 'news';
-            const tableName = postType === 'news' ? 'infoapp_news' : 'infoapp_politician_posts';
 
             console.log('🚀 CommentModal togglePostLike START - current state:', isLiked, likesCount);
 
-            // ZABEZPIECZENIE: Sprawdź aktualny stan w bazie przed zmianą
+            // (Opcjonalnie) zsynchronizuj bieżący stan z DB, żeby uniknąć rozjazdów
             const { data: currentLikeStatus } = await supabase
                 .from('infoapp_likes')
                 .select('id')
@@ -182,137 +182,40 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded, onLikeUpdate }) 
                 .eq('user_id', currentUser.id)
                 .limit(1);
 
-            const actualIsLiked = currentLikeStatus && currentLikeStatus.length > 0;
-            console.log('🔍 Actual like status in DB:', actualIsLiked, 'UI thinks:', isLiked);
-
-            // Jeśli stan w UI nie zgadza się z bazą, synchronizuj
+            const actualIsLiked = (currentLikeStatus?.length ?? 0) > 0;
             if (actualIsLiked !== isLiked) {
-                console.log('⚠️ Like status mismatch! Syncing...');
+                console.log('⚠️ Like status mismatch! Syncing UI...');
                 setIsLiked(actualIsLiked);
-                return; // Przerwij operację
+                // Nie wykonuj toggle, pozwól userowi kliknąć ponownie
+                return;
             }
 
-            // Zapisz aktualny stan przed zmianą
-            const currentIsLiked = actualIsLiked;
-            const newIsLiked = !currentIsLiked;
-            const newLikesCount = currentIsLiked ? Math.max(likesCount - 1, 0) : likesCount + 1;
+            // Jedyna operacja: zawołaj serwis, który robi INSERT/DELETE i zwraca świeży likes_count
+            const resp = await newsService.toggleLike(item.id, currentUser.id, isLiked);
 
-            // Optymistyczna aktualizacja UI
-            setIsLiked(newIsLiked);
-            setLikesCount(newLikesCount);
-
-            let success = false;
-
-            if (currentIsLiked) {
-                // USUŃ POLUBIENIE
-                console.log('🗑️ Removing like...');
-
-                const { error } = await supabase
-                    .from('infoapp_likes')
-                    .delete()
-                    .eq('post_id', item.id)
-                    .eq('post_type', postType)
-                    .eq('user_id', currentUser.id);
-
-                if (!error) {
-                    // Pobierz aktualną wartość i dekrementuj
-                    const { data: currentData, error: fetchError } = await supabase
-                        .from(tableName)
-                        .select('likes_count')
-                        .eq('id', item.id)
-                        .single();
-
-                    if (!fetchError && currentData) {
-                        const actualCount = currentData.likes_count || 0;
-                        const newCount = Math.max(actualCount - 1, 0);
-
-                        const { error: updateError } = await supabase
-                            .from(tableName)
-                            .update({ likes_count: newCount })
-                            .eq('id', item.id);
-
-                        success = !updateError;
-                        if (success) {
-                            setLikesCount(newCount);
-                            console.log('✅ Like removed. Count:', actualCount, '->', newCount);
-                        }
-                    }
-                }
-            } else {
-                // DODAJ POLUBIENIE  
-                console.log('➕ Adding like...');
-
-                // Sprawdź czy już nie istnieje (double-check)
-                const { data: doubleCheck } = await supabase
-                    .from('infoapp_likes')
-                    .select('id')
-                    .eq('post_id', item.id)
-                    .eq('post_type', postType)
-                    .eq('user_id', currentUser.id)
-                    .limit(1);
-
-                if (doubleCheck && doubleCheck.length > 0) {
-                    console.log('⚠️ Like already exists! Skipping...');
-                    setIsLiked(true);
-                    success = true;
-                } else {
-                    const { error } = await supabase
-                        .from('infoapp_likes')
-                        .insert([{
-                            post_id: item.id,
-                            post_type: postType,
-                            user_id: currentUser.id,
-                            created_at: new Date().toISOString()
-                        }]);
-
-                    if (!error || error.code === '23505') { // 23505 = duplikat
-                        // Pobierz aktualną wartość i inkrementuj
-                        const { data: currentData, error: fetchError } = await supabase
-                            .from(tableName)
-                            .select('likes_count')
-                            .eq('id', item.id)
-                            .single();
-
-                        if (!fetchError && currentData) {
-                            const actualCount = currentData.likes_count || 0;
-                            const newCount = actualCount + 1;
-
-                            const { error: updateError } = await supabase
-                                .from(tableName)
-                                .update({ likes_count: newCount })
-                                .eq('id', item.id);
-
-                            success = !updateError;
-                            if (success) {
-                                setLikesCount(newCount);
-                                console.log('✅ Like added. Count:', actualCount, '->', newCount);
-                            }
-                        }
-                    }
-                }
+            // Świeża liczba z DB (po triggerze)
+            let freshCount = resp?.data?.likes_count;
+            // Fallback, gdyby backend nic nie zwrócił:
+            if (typeof freshCount !== 'number') {
+                freshCount = isLiked ? Math.max((likesCount ?? 0) - 1, 0) : (likesCount ?? 0) + 1;
             }
 
-            if (!success) {
-                // Rollback
-                setIsLiked(currentIsLiked);
-                setLikesCount(likesCount);
-                Alert.alert('Błąd', 'Nie udało się zaktualizować polubienia');
-            } else {
-                // Powiadom parent
-                if (onLikeUpdate) {
-                    onLikeUpdate(item.id, likesCount, newIsLiked);
-                }
-            }
+            const nextLiked = !isLiked;
 
+            // Aktualizuj modal
+            setIsLiked(nextLiked);
+            setLikesCount(freshCount);
+
+            // Powiadom rodzica świeżą wartością
+            onLikeUpdate?.(item.id, freshCount, nextLiked);
         } catch (error) {
             console.error('CommentModal - Error toggling post like:', error);
-            setIsLiked(isLiked);
-            setLikesCount(likesCount);
-            Alert.alert('Błąd', 'Wystąpił problem z polubienie posta');
+            Alert.alert('Błąd', 'Wystąpił problem z polubieniem posta');
         } finally {
-            setLikingPost(false);
+            isTogglingRef.current = false;
         }
     };
+
 
     const loadComments = async () => {
         if (!item) return;
