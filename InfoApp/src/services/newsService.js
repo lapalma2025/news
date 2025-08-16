@@ -1,15 +1,14 @@
-// src/services/newsService.js - Naprawiony z prefiksami tabel
+// src/services/newsService.js
 import { supabase, handleSupabaseError, handleSupabaseSuccess, getCurrentTimestamp } from './supabaseClient';
 
 export const newsService = {
-    // Pobierz wszystkie aktywne newsy
-    // W newsService.js - fetchNews() TYMCZASOWO usuń filtr is_active:
+    // === LISTA / ODCZYT ===
     async fetchNews() {
         try {
             const { data, error } = await supabase
                 .from('infoapp_news')
                 .select('*')
-                // .eq('is_active', true)  // ← TYMCZASOWO ZAKOMENTUJ TĘ LINIĘ
+                // .eq('is_active', true) // jeśli chcesz filtrować tylko aktywne, odkomentuj
                 .order('created_at', { ascending: false });
 
             if (error) throw error;
@@ -19,11 +18,11 @@ export const newsService = {
         }
     },
 
-    // Dodaj nowy news
+    // === DODAWANIE NEWSA ===
     async addNews(newsData) {
         try {
             const { data, error } = await supabase
-                .from('infoapp_news')  // ← ZMIENIONE
+                .from('infoapp_news')
                 .insert([{
                     title: newsData.title,
                     content: newsData.content,
@@ -44,49 +43,35 @@ export const newsService = {
         }
     },
 
-    // Aktualizuj liczbę polubień
-    // W newsService.js - zastąp updateLikesCount:
-
-    async updateLikesCount(newsId, increment = true) {
+    // === (DEPRECATED) UPDATE LIKES — NIE DOTYKA LICZNIKA, TYLKO GO CZYTA ===
+    // Zostawione, by nie psuć istniejących wywołań. Nie zmienia DB.
+    async updateLikesCount(newsId /*, increment = true */) {
         try {
-            // Pobierz aktualną wartość
-            const { data: current, error: fetchError } = await supabase
+            const { data, error } = await supabase
                 .from('infoapp_news')
                 .select('likes_count')
                 .eq('id', newsId)
                 .single();
 
-            if (fetchError) throw fetchError;
-
-            const currentCount = current.likes_count || 0;
-            const newCount = increment
-                ? currentCount + 1
-                : Math.max(currentCount - 1, 0);
-
-            console.log(`Updating likes count: ${currentCount} -> ${newCount}`);
-
-            // Aktualizuj
-            const { data, error } = await supabase
-                .from('infoapp_news')
-                .update({ likes_count: newCount })
-                .eq('id', newsId)
-                .select();
-
             if (error) throw error;
-            return handleSupabaseSuccess(data[0], 'updateLikesCount');
+            // Zwracamy to, co jest w bazie (trigger dba o prawdę)
+            return handleSupabaseSuccess({ likes_count: data?.likes_count ?? 0 }, 'updateLikesCount');
         } catch (error) {
             return handleSupabaseError(error, 'updateLikesCount');
         }
     },
-    // Aktualizuj liczbę komentarzy
+
+    // === KOMENTARZE (pozostawione bez zmian — jeśli masz trigger także na comments, usuń raw-update) ===
     async updateCommentsCount(newsId, increment = true) {
         try {
             const { data, error } = await supabase
-                .from('infoapp_news')  // ← ZMIENIONE
+                .from('infoapp_news')
                 .update({
+                    // Uwaga: supabase.raw może nie być dostępne w Twojej wersji SDK.
+                    // Jeśli używasz Postgresa z triggerem na comments, przenieś logikę do DB jak w lajkach.
                     comments_count: increment
                         ? supabase.raw('comments_count + 1')
-                        : supabase.raw('comments_count - 1')
+                        : supabase.raw('GREATEST(comments_count - 1, 0)')
                 })
                 .eq('id', newsId)
                 .select();
@@ -98,16 +83,17 @@ export const newsService = {
         }
     },
 
-    // Pobierz newsy w czasie rzeczywistym
+    // === SUBSKRYPCJA ZMIAN (opcjonalnie filtruj po is_active) ===
     subscribeToNews(callback) {
         const subscription = supabase
             .channel('news_changes')
-            .on('postgres_changes',
+            .on(
+                'postgres_changes',
                 {
                     event: '*',
                     schema: 'public',
-                    table: 'infoapp_news',  // ← ZMIENIONE
-                    filter: 'is_active=eq.true'
+                    table: 'infoapp_news',
+                    // filter: 'is_active=eq.true'
                 },
                 callback
             )
@@ -116,18 +102,15 @@ export const newsService = {
         return subscription;
     },
 
-    // Anuluj subskrypcję
     unsubscribeFromNews(subscription) {
-        if (subscription) {
-            supabase.removeChannel(subscription);
-        }
+        if (subscription) supabase.removeChannel(subscription);
     },
 
-    // Wyszukaj newsy
+    // === WYSZUKIWANIE ===
     async searchNews(query) {
         try {
             const { data, error } = await supabase
-                .from('infoapp_news')  // ← ZMIENIONE
+                .from('infoapp_news')
                 .select('*')
                 .eq('is_active', true)
                 .or(`title.ilike.%${query}%,content.ilike.%${query}%`)
@@ -140,11 +123,11 @@ export const newsService = {
         }
     },
 
-    // Pobierz newsy według kategorii
+    // === KATEGORIE ===
     async getNewsByCategory(category) {
         try {
             const { data, error } = await supabase
-                .from('infoapp_news')  // ← ZMIENIONE
+                .from('infoapp_news')
                 .select('*')
                 .eq('is_active', true)
                 .eq('category', category)
@@ -157,18 +140,13 @@ export const newsService = {
         }
     },
 
-    // Dodaj/usuń polubienie
-    // W newsService.js - ZASTĄP funkcję toggleLike tym kodem:
-
+    // === LIKE / UNLIKE — TYLKO INSERT/DELETE W infoapp_likes, BEZ UPDATE LICZNIKA ===
     async toggleLike(newsId, userId, isCurrentlyLiked) {
         try {
             console.log('toggleLike called:', { newsId, userId, isCurrentlyLiked });
 
             if (isCurrentlyLiked) {
-                // ===== USUŃ POLUBIENIE =====
-                console.log('Removing like for:', newsId, userId);
-
-                // 1. Usuń z tabeli likes
+                // --- UNLIKE ---
                 const { error: deleteError } = await supabase
                     .from('infoapp_likes')
                     .delete()
@@ -177,34 +155,10 @@ export const newsService = {
                     .eq('user_id', userId);
 
                 if (deleteError) throw deleteError;
-
-                // 2. Pobierz aktualny licznik i dekrementuj
-                const { data: currentData, error: fetchError } = await supabase
-                    .from('infoapp_news')
-                    .select('likes_count')
-                    .eq('id', newsId)
-                    .single();
-
-                if (fetchError) throw fetchError;
-
-                const currentCount = currentData?.likes_count || 0;
-                const newCount = Math.max(currentCount - 1, 0);
-
-                const { error: updateError } = await supabase
-                    .from('infoapp_news')
-                    .update({ likes_count: newCount })
-                    .eq('id', newsId);
-
-                if (updateError) throw updateError;
-
-                console.log('Like removed. Count:', currentCount, '->', newCount);
-
             } else {
-                // ===== DODAJ POLUBIENIE =====
-                console.log('Adding like for:', newsId, userId);
-
-                // 1. Sprawdź czy już nie istnieje (zabezpieczenie przed duplikatami)
-                const { data: existingLike } = await supabase
+                // --- LIKE ---
+                // Anti-dup: jeśli już istnieje, nie wstawiamy
+                const { data: existingLike, error: checkErr } = await supabase
                     .from('infoapp_likes')
                     .select('id')
                     .eq('post_id', newsId)
@@ -212,59 +166,49 @@ export const newsService = {
                     .eq('user_id', userId)
                     .limit(1);
 
-                if (existingLike && existingLike.length > 0) {
+                if (checkErr) throw checkErr;
+
+                if (!existingLike || existingLike.length === 0) {
+                    const { error: insertError } = await supabase
+                        .from('infoapp_likes')
+                        .insert([{
+                            post_id: newsId,
+                            post_type: 'news',
+                            user_id: userId,
+                            created_at: getCurrentTimestamp()
+                        }]);
+
+                    // 23505 = unique_violation — gdyby user kliknął 2x
+                    if (insertError && insertError?.code !== '23505') throw insertError;
+                } else {
                     console.log('Like already exists, skipping insert');
-                    return handleSupabaseSuccess(null, 'toggleLike');
                 }
-
-                // 2. Dodaj do tabeli likes
-                const { error: insertError } = await supabase
-                    .from('infoapp_likes')
-                    .insert([{
-                        post_id: newsId,
-                        post_type: 'news',
-                        user_id: userId,
-                        created_at: getCurrentTimestamp()
-                    }]);
-
-                if (insertError && insertError.code !== '23505') { // 23505 = duplikat klucza
-                    throw insertError;
-                }
-
-                // 3. Pobierz aktualny licznik i inkrementuj
-                const { data: currentData, error: fetchError } = await supabase
-                    .from('infoapp_news')
-                    .select('likes_count')
-                    .eq('id', newsId)
-                    .single();
-
-                if (fetchError) throw fetchError;
-
-                const currentCount = currentData?.likes_count || 0;
-                const newCount = currentCount + 1;
-
-                const { error: updateError } = await supabase
-                    .from('infoapp_news')
-                    .update({ likes_count: newCount })
-                    .eq('id', newsId);
-
-                if (updateError) throw updateError;
-
-                console.log('Like added. Count:', currentCount, '->', newCount);
             }
 
-            return handleSupabaseSuccess(null, 'toggleLike');
+            // Po zadziałaniu triggera czytamy świeżą wartość (opcjonalne, Ty i tak robisz refetch)
+            const { data: fresh, error: freshErr } = await supabase
+                .from('infoapp_news')
+                .select('likes_count')
+                .eq('id', newsId)
+                .single();
+
+            if (freshErr) {
+                console.warn('toggleLike fresh fetch warn:', freshErr);
+                return handleSupabaseSuccess(null, 'toggleLike');
+            }
+
+            return handleSupabaseSuccess({ likes_count: fresh?.likes_count ?? null }, 'toggleLike');
         } catch (error) {
             console.error('toggleLike error:', error);
             return handleSupabaseError(error, 'toggleLike');
         }
     },
 
-    // Sprawdź czy użytkownik polubił post
+    // === SPRAWDZENIE STATUSU LIKE DLA UŻYTKOWNIKA ===
     async checkIfLiked(newsId, userId) {
         try {
             const { data, error } = await supabase
-                .from('infoapp_likes')  // ← ZMIENIONE
+                .from('infoapp_likes')
                 .select('id')
                 .eq('post_id', newsId)
                 .eq('post_type', 'news')
@@ -272,7 +216,7 @@ export const newsService = {
                 .limit(1);
 
             if (error) throw error;
-            return handleSupabaseSuccess(data.length > 0, 'checkIfLiked');
+            return handleSupabaseSuccess((data?.length ?? 0) > 0, 'checkIfLiked');
         } catch (error) {
             return handleSupabaseError(error, 'checkIfLiked');
         }
