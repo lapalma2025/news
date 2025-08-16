@@ -191,22 +191,20 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded, onLikeUpdate }) 
             }
 
             // Jedyna operacja: zawołaj serwis, który robi INSERT/DELETE i zwraca świeży likes_count
-            const resp = await newsService.toggleLike(item.id, currentUser.id, isLiked);
-
+            const resp = postType === 'politician_post'
+                ? await politicianService.toggleLike(item.id, currentUser.id, isLiked)
+                : await newsService.toggleLike(item.id, currentUser.id, isLiked);
             // Świeża liczba z DB (po triggerze)
             let freshCount = resp?.data?.likes_count;
-            // Fallback, gdyby backend nic nie zwrócił:
+            if (typeof freshCount !== 'number') {
+                freshCount = isLiked ? Math.max((likesCount ?? 0) - 1, 0) : (likesCount ?? 0) + 1;
+            }            // Fallback, gdyby backend nic nie zwrócił:
             if (typeof freshCount !== 'number') {
                 freshCount = isLiked ? Math.max((likesCount ?? 0) - 1, 0) : (likesCount ?? 0) + 1;
             }
-
             const nextLiked = !isLiked;
-
-            // Aktualizuj modal
             setIsLiked(nextLiked);
             setLikesCount(freshCount);
-
-            // Powiadom rodzica świeżą wartością
             onLikeUpdate?.(item.id, freshCount, nextLiked);
         } catch (error) {
             console.error('CommentModal - Error toggling post like:', error);

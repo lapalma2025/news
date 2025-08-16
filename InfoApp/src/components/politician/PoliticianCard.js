@@ -21,6 +21,13 @@ const PoliticianCard = ({ post, onPress, onLike, onComment }) => {
     const [isFollowing, setIsFollowing] = useState(false);
     const [currentUser, setCurrentUser] = useState(null);
 
+    // w PoliticianCard.js
+    useEffect(() => {
+        setLiked(!!post.isLikedByUser);
+        setLikesCount(post.likes_count || 0);
+    }, [post.id, post.isLikedByUser, post.likes_count]);
+
+
     useEffect(() => {
         initializeUser();
         checkIfFollowing();
