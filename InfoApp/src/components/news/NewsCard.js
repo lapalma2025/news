@@ -150,23 +150,27 @@ const NewsCard = ({ news, onPress, onComment, onLike, isLiked = false }) => {
         }
     };
 
+    // W NewsCard.js - zamień stary handlePress na ten:
+
     const handlePress = async () => {
-        if (!news) return;
+        console.log('NewsCard handlePress triggered');
+        console.log('🔍 News ID:', news.id);
+        console.log('🔍 News title:', news.title);
 
         try {
-            // ZAPISZ DO HISTORII CZYTANIA - NOWY SYSTEM
+            // Nowa metoda - używa readingHistoryService.markAsRead
             console.log('Marking article as read:', news.id, news.title);
             await readingHistoryService.markAsRead(news.id, 'news');
 
-            if (onPress) {
-                onPress(news);
-            }
+            // Dodaj również do userService (dla lokalnych statystyk)
+            await userService.addToReadHistory(news.id, news.title, 'news');
+
         } catch (error) {
-            console.error('Error handling press:', error);
-            // Mimo błędu, pozwól na przejście dalej
-            if (onPress) {
-                onPress(news);
-            }
+            console.error('Error marking article as read:', error);
+        }
+
+        if (onPress) {
+            onPress(news);
         }
     };
 

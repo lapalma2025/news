@@ -19,6 +19,7 @@ import { COLORS } from '../../styles/colors';
 import { commentService } from '../../services/commentService';
 import { newsService } from '../../services/newsService';
 import { politicianService } from '../../services/politicianService';
+import { readingHistoryService } from '../../services/readingHistoryService';
 import { userService } from '../../services/userService';
 import { supabase } from '../../services/supabaseClient';
 
@@ -86,12 +87,21 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded, onLikeUpdate }) 
         if (visible && item && item.id) {
             const markAsRead = async () => {
                 try {
+                    // Lepsze określenie typu artykułu
                     const articleType = item.type === 'politician_post' ? 'politician_post' : 'news';
                     console.log('CommentModal: Marking as read:', item.id, articleType);
 
-                    await readingHistoryService.markAsRead(item.id, articleType);
+                    // Wywołaj nową funkcję markAsRead
+                    const result = await readingHistoryService.markAsRead(item.id, articleType);
+
+                    if (result.success) {
+                        console.log('✅ Article marked as read successfully');
+                    } else {
+                        console.warn('⚠️ Failed to mark article as read:', result.error);
+                    }
+
                 } catch (error) {
-                    console.error('Error marking article as read in CommentModal:', error);
+                    console.error('❌ Error marking article as read in CommentModal:', error);
                 }
             };
 

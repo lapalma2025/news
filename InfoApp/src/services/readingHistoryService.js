@@ -1,8 +1,50 @@
-// src/services/readingHistoryService.js - UPROSZCZONY
+// src/services/readingHistoryService.js - ZABEZPIECZONY PRZECIWKO RÓŻNYM STRUKTUROM
 import { supabase } from './supabaseClient';
 import { userService } from './userService';
 
 export const readingHistoryService = {
+    // Pomocnicza funkcja do normalizacji read_by
+    normalizeReadBy(readByField) {
+        // Jeśli nie ma wartości, zwróć pustą tablicę
+        if (!readByField) return [];
+
+        // Jeśli już jest tablicą, zwróć ją
+        if (Array.isArray(readByField)) return readByField;
+
+        // Jeśli jest obiektem
+        if (typeof readByField === 'object') {
+            // Pusty obiekt -> pusta tablica
+            if (Object.keys(readByField).length === 0) return [];
+
+            // Struktura Strapi z polem data
+            if (readByField.data && Array.isArray(readByField.data)) {
+                return readByField.data;
+            }
+
+            // Struktura Strapi z polem connect
+            if (readByField.connect && Array.isArray(readByField.connect)) {
+                return readByField.connect;
+            }
+
+            // Pojedynczy obiekt - zamień na tablicę
+            return [readByField];
+        }
+
+        // Jeśli jest stringiem, spróbuj sparsować JSON
+        if (typeof readByField === 'string') {
+            try {
+                const parsed = JSON.parse(readByField);
+                return Array.isArray(parsed) ? parsed : [parsed];
+            } catch (e) {
+                console.warn('Could not parse read_by string:', readByField);
+                return [];
+            }
+        }
+
+        // W ostateczności zwróć pustą tablicę
+        return [];
+    },
+
     // Oznacz artykuł jako przeczytany
     async markAsRead(articleId, articleType = 'news') {
         try {
@@ -34,10 +76,13 @@ export const readingHistoryService = {
 
             console.log('📖 Article data:', {
                 title: articleData.title,
-                currentReadBy: articleData.read_by
+                rawReadBy: articleData.read_by
             });
 
-            const currentReadBy = articleData.read_by || [];
+            // Normalizuj read_by do tablicy
+            const currentReadBy = this.normalizeReadBy(articleData.read_by);
+
+            console.log('📖 Normalized read_by:', currentReadBy);
 
             // Sprawdź czy użytkownik już nie przeczytał tego artykułu
             const alreadyRead = currentReadBy.some(entry => entry.user_id === user.id);
@@ -67,6 +112,10 @@ export const readingHistoryService = {
             }
 
             console.log('✅ Successfully marked article as read');
+
+            // Dodaj również do lokalnych statystyk użytkownika
+            await userService.addToReadHistory(articleId, articleData.title, articleType);
+
             return { success: true };
 
         } catch (error) {
@@ -75,13 +124,10 @@ export const readingHistoryService = {
         }
     },
 
-    // Pobierz historię czytania użytkownika - NAJLEPSZA WERSJA
+    // Pobierz historię czytania użytkownika
     async getReadingHistory(userId) {
         try {
             console.log('Loading reading history for user:', userId);
-
-            // Strategia: pobierz wszystkie artykuły i filtruj lokalnie
-            // To jest bardziej niezawodne niż skomplikowane zapytania JSON
 
             const [newsResult, postsResult] = await Promise.all([
                 // Pobierz wszystkie aktywne newsy
@@ -115,12 +161,12 @@ export const readingHistoryService = {
 
             // Filtruj lokalnie - tylko te które użytkownik przeczytał
             const readNews = (newsResult.data || []).filter(item => {
-                const readBy = item.read_by || [];
+                const readBy = this.normalizeReadBy(item.read_by);
                 return readBy.some(entry => entry.user_id === userId);
             });
 
             const readPosts = (postsResult.data || []).filter(item => {
-                const readBy = item.read_by || [];
+                const readBy = this.normalizeReadBy(item.read_by);
                 return readBy.some(entry => entry.user_id === userId);
             });
 
@@ -128,7 +174,8 @@ export const readingHistoryService = {
 
             // Przekształć dane do unified format
             const newsItems = readNews.map(item => {
-                const userReadData = item.read_by.find(entry => entry.user_id === userId);
+                const readBy = this.normalizeReadBy(item.read_by);
+                const userReadData = readBy.find(entry => entry.user_id === userId);
                 return {
                     ...item,
                     type: 'news',
@@ -138,7 +185,8 @@ export const readingHistoryService = {
             });
 
             const postItems = readPosts.map(item => {
-                const userReadData = item.read_by.find(entry => entry.user_id === userId);
+                const readBy = this.normalizeReadBy(item.read_by);
+                const userReadData = readBy.find(entry => entry.user_id === userId);
                 return {
                     ...item,
                     type: 'politician_post',
@@ -162,7 +210,7 @@ export const readingHistoryService = {
         }
     },
 
-    // Usuń artykuł z historii czytania - POPRAWIONA WERSJA
+    // Usuń artykuł z historii czytania
     async removeFromHistory(articleId, articleType, userId) {
         try {
             console.log(`🗑️ Removing article ${articleId} (${articleType}) from history for user ${userId}`);
@@ -183,7 +231,7 @@ export const readingHistoryService = {
 
             console.log(`📖 Article "${articleData.title}" current read_by:`, articleData.read_by);
 
-            const currentReadBy = articleData.read_by || [];
+            const currentReadBy = this.normalizeReadBy(articleData.read_by);
 
             // Usuń wpis użytkownika
             const updatedReadBy = currentReadBy.filter(entry => entry.user_id !== userId);
@@ -210,7 +258,7 @@ export const readingHistoryService = {
         }
     },
 
-    // Wyczyść całą historię czytania użytkownika - POPRAWIONA WERSJA
+    // Wyczyść całą historię czytania użytkownika
     async clearReadingHistory(userId) {
         try {
             console.log('🗑️ Clearing reading history for user:', userId);
@@ -250,7 +298,7 @@ export const readingHistoryService = {
                         .then(({ data, error }) => {
                             if (error || !data) return;
 
-                            const updatedReadBy = (data.read_by || []).filter(
+                            const updatedReadBy = this.normalizeReadBy(data.read_by).filter(
                                 entry => entry.user_id !== userId
                             );
 
@@ -275,7 +323,7 @@ export const readingHistoryService = {
                         .then(({ data, error }) => {
                             if (error || !data) return;
 
-                            const updatedReadBy = (data.read_by || []).filter(
+                            const updatedReadBy = this.normalizeReadBy(data.read_by).filter(
                                 entry => entry.user_id !== userId
                             );
 
@@ -327,7 +375,7 @@ export const readingHistoryService = {
                 return false;
             }
 
-            const readBy = data.read_by || [];
+            const readBy = this.normalizeReadBy(data.read_by);
             return readBy.some(entry => entry.user_id === userId);
 
         } catch (error) {
