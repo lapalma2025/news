@@ -1,0 +1,45 @@
+{
+  "kind": "collectionType",
+  "collectionName": "politician_posts",
+  "info": {
+    "singularName": "politician-post",
+    "pluralName": "politician-posts",
+    "displayName": "Politician Post"
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "title": {
+      "type": "string",
+      "required": true
+    },
+    "content": {
+      "type": "blocks",
+      "required": true
+    },
+    "politician": {
+      "type": "relation",
+      "relation": "oneToOne",
+      "target": "api::politician.politician"
+    },
+    "post_type": {
+      "type": "enumeration",
+      "enum": [
+        "oświadczenie",
+        "komentarz",
+        "stanowisko",
+        "komunikat",
+        "wywiad"
+      ]
+    },
+    "is_official": {
+      "type": "boolean",
+      "default": true
+    },
+    "supabase_id": {
+      "type": "string"
+    }
+  }
+}

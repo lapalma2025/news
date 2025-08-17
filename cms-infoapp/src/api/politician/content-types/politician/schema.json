@@ -1,0 +1,36 @@
+{
+  "kind": "collectionType",
+  "collectionName": "politicians",
+  "info": {
+    "singularName": "politician",
+    "pluralName": "politicians",
+    "displayName": "Politician"
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "name": {
+      "type": "string",
+      "required": true
+    },
+    "party": {
+      "type": "string",
+      "required": true
+    },
+    "photo": {
+      "type": "media",
+      "multiple": false,
+      "allowedTypes": [
+        "images",
+        "files",
+        "videos",
+        "audios"
+      ]
+    },
+    "supabase_id": {
+      "type": "string"
+    }
+  }
+}

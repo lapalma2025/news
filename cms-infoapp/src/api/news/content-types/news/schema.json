@@ -1,0 +1,47 @@
+{
+	"kind": "collectionType",
+	"collectionName": "news_list",
+	"info": {
+		"singularName": "news",
+		"pluralName": "news-list",
+		"displayName": "News"
+	},
+	"options": {
+		"draftAndPublish": true
+	},
+	"pluginOptions": {},
+	"attributes": {
+		"title": {
+			"type": "string",
+			"required": true
+		},
+		"content": {
+			"type": "blocks",
+			"required": true
+		},
+		"author": {
+			"type": "string",
+			"required": true
+		},
+		"category": {
+			"type": "enumeration",
+			"default": "Inne",
+			"enum": [
+				"Polityka",
+				"Ekonomia",
+				"Technologia",
+				"Społeczeństwo",
+				"Kultura",
+				"Sport",
+				"Inne"
+			]
+		},
+		"is_breaking": {
+			"type": "boolean",
+			"default": false
+		},
+		"supabase_id": {
+			"type": "string"
+		}
+	}
+}
