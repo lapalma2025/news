@@ -9,6 +9,7 @@ import 'react-native-url-polyfill/auto';
 import HomeScreen from './src/screens/HomeScreen';
 import NewsScreen from './src/screens/NewsScreen';
 import PoliticiansScreen from './src/screens/PoliticiansScreen';
+import LegislationScreen from './src/screens/LegislationScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 
 import { COLORS } from './src/styles/colors';
@@ -27,6 +28,9 @@ const TabIcon = ({ name, focused, color, size }) => {
       break;
     case 'Politycy':
       iconName = focused ? 'people' : 'people-outline';
+      break;
+    case 'Ustawy': // NOWA IKONA
+      iconName = focused ? 'document-text' : 'document-text-outline';
       break;
     case 'Profil':
       iconName = focused ? 'person' : 'person-outline';
@@ -99,6 +103,13 @@ export default function App() {
             component={PoliticiansScreen}
             options={{
               headerTitle: 'Politycy',
+            }}
+          />
+          <Tab.Screen
+            name="Ustawy"
+            component={LegislationScreen}
+            options={{
+              headerTitle: 'Prace Legislacyjne',
             }}
           />
           <Tab.Screen
