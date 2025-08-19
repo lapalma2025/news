@@ -1,21 +1,31 @@
-// src/components/legislation/LegislationCard.js - Karta dokumentu legislacyjnego
-import React, { useState } from 'react';
+// src/components/legislation/LegislationCard.js - Karta dokumentu legislacyjnego z głosowaniem
+import React, { useState, useEffect } from 'react';
 import {
     View,
     Text,
     StyleSheet,
     TouchableOpacity,
     Alert,
-    Animated
+    Animated,
+    Linking,
+    ActivityIndicator
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 
 import { COLORS } from '../../styles/colors';
+import { legislationVotingService } from '../../services/legislationVotingService';
 
 const LegislationCard = ({ print, onPress, onVote }) => {
-    const [userVote, setUserVote] = useState(null); // 'like', 'dislike', lub null
+    const [userVote, setUserVote] = useState(print.userVote || null);
     const [voteAnimation] = useState(new Animated.Value(1));
+    const [votingStats, setVotingStats] = useState(print.votingStats || { likes: 0, dislikes: 0, total: 0 });
+    const [loading, setLoading] = useState(false);
+
+    // Aktualizuj stan gdy props się zmienią
+    useEffect(() => {
+        setUserVote(print.userVote || null);
+        setVotingStats(print.votingStats || { likes: 0, dislikes: 0, total: 0 });
+    }, [print.userVote, print.votingStats]);
 
     const getTypeIcon = (type) => {
         switch (type) {
@@ -108,11 +118,26 @@ const LegislationCard = ({ print, onPress, onVote }) => {
         }
     };
 
-    const handleVote = (vote) => {
+    const handleVote = async (vote) => {
+        // Sprawdź czy użytkownik już głosował tym samym głosem
+        if (userVote === vote) {
+            Alert.alert(
+                'Już głosowałeś',
+                'Czy chcesz cofnąć swój głos?',
+                [
+                    { text: 'Nie', style: 'cancel' },
+                    { text: 'Cofnij głos', onPress: () => removeVote() }
+                ]
+            );
+            return;
+        }
+
+        setLoading(true);
+
         // Animacja podczas głosowania
         Animated.sequence([
             Animated.timing(voteAnimation, {
-                toValue: 0.8,
+                toValue: 0.95,
                 duration: 100,
                 useNativeDriver: true,
             }),
@@ -123,21 +148,112 @@ const LegislationCard = ({ print, onPress, onVote }) => {
             }),
         ]).start();
 
-        // Sprawdź czy użytkownik już głosował
-        if (userVote === vote) {
-            Alert.alert('Już głosowałeś', 'Twój głos został już zapisany dla tego dokumentu.');
-            return;
-        }
+        try {
+            const response = await legislationVotingService.submitVote(print.number, vote);
 
-        setUserVote(vote);
-        onVote(vote);
+            if (response.success) {
+                setUserVote(vote);
+                setVotingStats(response.data.stats);
+
+                // Powiadom parent component
+                if (onVote) {
+                    onVote(vote, response.data.stats);
+                }
+
+                // Pokaż potwierdzenie
+                const message = response.data.action === 'updated'
+                    ? 'Twój głos został zaktualizowany!'
+                    : 'Dziękujemy za oddanie głosu!';
+
+                Alert.alert('Sukces', message);
+            } else {
+                Alert.alert('Błąd', response.error);
+            }
+        } catch (error) {
+            console.error('Error voting:', error);
+            Alert.alert('Błąd', 'Nie udało się zapisać głosu. Spróbuj ponownie.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const removeVote = async () => {
+        setLoading(true);
+
+        try {
+            const response = await legislationVotingService.removeVote(print.number);
+
+            if (response.success) {
+                setUserVote(null);
+                setVotingStats(response.data.stats);
+
+                // Powiadom parent component
+                if (onVote) {
+                    onVote(null, response.data.stats);
+                }
+
+                Alert.alert('Sukces', 'Twój głos został cofnięty');
+            } else {
+                Alert.alert('Błąd', response.error);
+            }
+        } catch (error) {
+            console.error('Error removing vote:', error);
+            Alert.alert('Błąd', 'Nie udało się cofnąć głosu.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const openSejmPage = async () => {
+        try {
+            const url = legislationVotingService.generateSejmLink(print.number);
+            const supported = await Linking.canOpenURL(url);
+
+            if (supported) {
+                await Linking.openURL(url);
+            } else {
+                Alert.alert('Błąd', 'Nie można otworzyć strony Sejmu');
+            }
+        } catch (error) {
+            console.error('Error opening Sejm page:', error);
+            Alert.alert('Błąd', 'Wystąpił problem podczas otwierania strony');
+        }
+    };
+
+    const openPDF = async () => {
+        try {
+            const url = legislationVotingService.generatePdfLink(print.number);
+            const supported = await Linking.canOpenURL(url);
+
+            if (supported) {
+                await Linking.openURL(url);
+            } else {
+                Alert.alert('Błąd', 'Nie można otworzyć dokumentu PDF');
+            }
+        } catch (error) {
+            console.error('Error opening PDF:', error);
+            Alert.alert('Błąd', 'Wystąpił problem podczas otwierania dokumentu');
+        }
+    };
+
+    const handleCardPress = () => {
+        Alert.alert(
+            print.title,
+            `${print.summary || 'Brak opisu'}\n\nData: ${print.formattedDate}\nStatus: ${getStatusLabel(print.status)}\n\nCo chcesz zrobić?`,
+            [
+                { text: 'Anuluj', style: 'cancel' },
+                { text: 'Zobacz na Sejm.gov.pl', onPress: openSejmPage },
+                { text: 'Pobierz PDF', onPress: openPDF },
+                { text: 'Szczegóły', onPress: () => { if (onPress) onPress(print); } }
+            ]
+        );
     };
 
     const priorityIndicator = getPriorityIndicator(print.priority);
 
     return (
         <Animated.View style={[styles.container, { transform: [{ scale: voteAnimation }] }]}>
-            <TouchableOpacity onPress={onPress} activeOpacity={0.7}>
+            <TouchableOpacity onPress={handleCardPress} activeOpacity={0.7}>
                 <View style={styles.card}>
                     {/* Header z typem i statusem */}
                     <View style={styles.header}>
@@ -168,9 +284,18 @@ const LegislationCard = ({ print, onPress, onVote }) => {
                         </View>
                     </View>
 
-                    {/* Numer druku */}
+                    {/* Numer druku z przyciskiem do Sejmu */}
                     <View style={styles.numberContainer}>
-                        <Text style={styles.numberText}>Druk nr {print.number}</Text>
+                        <View style={styles.numberSection}>
+                            <Text style={styles.numberText}>Druk nr {print.number}</Text>
+                            <TouchableOpacity
+                                style={styles.sejmButton}
+                                onPress={openSejmPage}
+                            >
+                                <Ionicons name="open-outline" size={14} color={COLORS.primary} />
+                                <Text style={styles.sejmButtonText}>Sejm.gov.pl</Text>
+                            </TouchableOpacity>
+                        </View>
                         <Text style={styles.dateText}>{print.formattedDate}</Text>
                     </View>
 
@@ -209,6 +334,31 @@ const LegislationCard = ({ print, onPress, onVote }) => {
                                 {print.daysAge} dni temu
                             </Text>
                         </View>
+
+                        {/* Przycisk PDF */}
+                        <TouchableOpacity
+                            style={styles.pdfButton}
+                            onPress={openPDF}
+                        >
+                            <Ionicons name="document-text-outline" size={14} color={COLORS.blue} />
+                            <Text style={styles.pdfButtonText}>PDF</Text>
+                        </TouchableOpacity>
+                    </View>
+
+                    {/* Statystyki głosowania */}
+                    <View style={styles.statsContainer}>
+                        <View style={styles.statsItem}>
+                            <Ionicons name="thumbs-up-outline" size={16} color={COLORS.green} />
+                            <Text style={styles.statsText}>{votingStats.likes}</Text>
+                        </View>
+                        <View style={styles.statsItem}>
+                            <Ionicons name="thumbs-down-outline" size={16} color={COLORS.red} />
+                            <Text style={styles.statsText}>{votingStats.dislikes}</Text>
+                        </View>
+                        <View style={styles.statsItem}>
+                            <Ionicons name="people-outline" size={16} color={COLORS.gray} />
+                            <Text style={styles.statsText}>{votingStats.total} głosów</Text>
+                        </View>
                     </View>
 
                     {/* Przyciski głosowania */}
@@ -223,12 +373,17 @@ const LegislationCard = ({ print, onPress, onVote }) => {
                                         userVote === 'like' && styles.voteButtonActive
                                     ]}
                                     onPress={() => handleVote('like')}
+                                    disabled={loading}
                                 >
-                                    <Ionicons
-                                        name={userVote === 'like' ? 'thumbs-up' : 'thumbs-up-outline'}
-                                        size={20}
-                                        color={userVote === 'like' ? COLORS.white : COLORS.green}
-                                    />
+                                    {loading && userVote === 'like' ? (
+                                        <ActivityIndicator size="small" color={COLORS.white} />
+                                    ) : (
+                                        <Ionicons
+                                            name={userVote === 'like' ? 'thumbs-up' : 'thumbs-up-outline'}
+                                            size={20}
+                                            color={userVote === 'like' ? COLORS.white : COLORS.green}
+                                        />
+                                    )}
                                     <Text style={[
                                         styles.voteButtonText,
                                         userVote === 'like' && styles.voteButtonTextActive
@@ -244,12 +399,17 @@ const LegislationCard = ({ print, onPress, onVote }) => {
                                         userVote === 'dislike' && styles.voteButtonActive
                                     ]}
                                     onPress={() => handleVote('dislike')}
+                                    disabled={loading}
                                 >
-                                    <Ionicons
-                                        name={userVote === 'dislike' ? 'thumbs-down' : 'thumbs-down-outline'}
-                                        size={20}
-                                        color={userVote === 'dislike' ? COLORS.white : COLORS.red}
-                                    />
+                                    {loading && userVote === 'dislike' ? (
+                                        <ActivityIndicator size="small" color={COLORS.white} />
+                                    ) : (
+                                        <Ionicons
+                                            name={userVote === 'dislike' ? 'thumbs-down' : 'thumbs-down-outline'}
+                                            size={20}
+                                            color={userVote === 'dislike' ? COLORS.white : COLORS.red}
+                                        />
+                                    )}
                                     <Text style={[
                                         styles.voteButtonText,
                                         userVote === 'dislike' && styles.voteButtonTextActive
@@ -258,6 +418,13 @@ const LegislationCard = ({ print, onPress, onVote }) => {
                                     </Text>
                                 </TouchableOpacity>
                             </View>
+
+                            {/* Informacja o cofaniu głosu */}
+                            {userVote && (
+                                <Text style={styles.voteHint}>
+                                    Kliknij ponownie aby cofnąć głos
+                                </Text>
+                            )}
                         </View>
                     </View>
                 </View>
@@ -331,10 +498,30 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         marginBottom: 8,
     },
+    numberSection: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        flex: 1,
+    },
     numberText: {
         fontSize: 14,
         color: COLORS.primary,
         fontWeight: 'bold',
+        marginRight: 8,
+    },
+    sejmButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        backgroundColor: COLORS.primaryLight,
+        borderRadius: 4,
+    },
+    sejmButtonText: {
+        fontSize: 10,
+        color: COLORS.primary,
+        fontWeight: '600',
+        marginLeft: 2,
     },
     dateText: {
         fontSize: 12,
@@ -368,6 +555,42 @@ const styles = StyleSheet.create({
         fontSize: 12,
         color: COLORS.textSecondary,
         marginLeft: 4,
+    },
+    pdfButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        backgroundColor: COLORS.infoLight,
+        borderRadius: 4,
+        marginLeft: 8,
+    },
+    pdfButtonText: {
+        fontSize: 10,
+        color: COLORS.blue,
+        fontWeight: '600',
+        marginLeft: 2,
+    },
+    statsContainer: {
+        flexDirection: 'row',
+        justifyContent: 'space-around',
+        alignItems: 'center',
+        paddingVertical: 12,
+        borderTopWidth: 1,
+        borderTopColor: COLORS.borderLight,
+        borderBottomWidth: 1,
+        borderBottomColor: COLORS.borderLight,
+        marginBottom: 16,
+    },
+    statsItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    statsText: {
+        fontSize: 12,
+        color: COLORS.textSecondary,
+        marginLeft: 4,
+        fontWeight: '600',
     },
     votingContainer: {
         borderTopWidth: 1,
@@ -418,6 +641,13 @@ const styles = StyleSheet.create({
     },
     voteButtonTextActive: {
         color: COLORS.white,
+    },
+    voteHint: {
+        fontSize: 11,
+        color: COLORS.textLight,
+        textAlign: 'center',
+        marginTop: 8,
+        fontStyle: 'italic',
     },
 });
 

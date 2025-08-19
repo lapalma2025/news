@@ -17,6 +17,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 
 import { COLORS } from '../styles/colors';
 import { legislationService } from '../services/legislationService';
+import { legislationVotingService } from '../services/legislationVotingService';
 import LegislationCard from '../components/legislation/LegislationCard';
 import FilterBar from '../components/legislation/FilterBar';
 import LoadingSpinner from '../components/common/LoadingSpinner';
@@ -32,6 +33,8 @@ const LegislationScreen = () => {
         type: 'all',
         status: 'all'
     });
+    const [votingStats, setVotingStats] = useState({}); // Statystyki głosowania dla wszystkich dokumentów
+    const [userVotes, setUserVotes] = useState({}); // Głosy użytkownika dla wszystkich dokumentów
 
     // Paginacja
     const [currentOffset, setCurrentOffset] = useState(0);
@@ -65,6 +68,9 @@ const LegislationScreen = () => {
                 setPrints(newPrints);
                 setHasMore(response.pagination.hasMore);
                 setCurrentOffset(offset + ITEMS_PER_PAGE);
+
+                // Załaduj statystyki głosowania dla nowych dokumentów
+                await loadVotingData(newPrints);
             } else {
                 setError(response.error);
             }
@@ -75,6 +81,28 @@ const LegislationScreen = () => {
             setLoading(false);
             setLoadingMore(false);
             setRefreshing(false);
+        }
+    };
+
+    const loadVotingData = async (printsData) => {
+        try {
+            const printNumbers = printsData.map(print => print.number);
+
+            // Pobierz statystyki i głosy użytkownika równolegle
+            const [statsResponse, userVotesResponse] = await Promise.all([
+                legislationVotingService.getMultipleVotingStats(printNumbers),
+                legislationVotingService.getMultipleUserVotes(printNumbers)
+            ]);
+
+            if (statsResponse.success) {
+                setVotingStats(prev => ({ ...prev, ...statsResponse.data }));
+            }
+
+            if (userVotesResponse.success) {
+                setUserVotes(prev => ({ ...prev, ...userVotesResponse.data }));
+            }
+        } catch (error) {
+            console.error('Error loading voting data:', error);
         }
     };
 
@@ -91,6 +119,20 @@ const LegislationScreen = () => {
 
     const handleFilterChange = (newFilters) => {
         setFilters(newFilters);
+    };
+
+    const handleVote = async (printNumber, vote, stats) => {
+        // Zaktualizuj lokalne statystyki
+        setVotingStats(prev => ({
+            ...prev,
+            [printNumber]: stats
+        }));
+
+        // Zaktualizuj głos użytkownika
+        setUserVotes(prev => ({
+            ...prev,
+            [printNumber]: vote
+        }));
     };
 
     const handleCardPress = async (print) => {
@@ -157,21 +199,6 @@ const LegislationScreen = () => {
         }
     };
 
-    const handleVote = async (printNumber, vote) => {
-        try {
-            const response = await legislationService.submitVote(printNumber, vote, 'anonymous_user');
-            if (response.success) {
-                Alert.alert(
-                    'Dziękujemy!',
-                    vote === 'like' ? 'Twój głos poparcia został zapisany' : 'Twój głos sprzeciwu został zapisany'
-                );
-            }
-        } catch (error) {
-            console.error('Error submitting vote:', error);
-            Alert.alert('Błąd', 'Nie udało się zapisać głosu');
-        }
-    };
-
     const getStatusLabel = (status) => {
         switch (status) {
             case 'nowe': return 'Nowe';
@@ -185,9 +212,13 @@ const LegislationScreen = () => {
 
     const renderPrintItem = ({ item }) => (
         <LegislationCard
-            print={item}
+            print={{
+                ...item,
+                votingStats: votingStats[item.number] || { likes: 0, dislikes: 0, total: 0 },
+                userVote: userVotes[item.number] || null
+            }}
             onPress={() => handleCardPress(item)}
-            onVote={(vote) => handleVote(item.number, vote)}
+            onVote={(vote, stats) => handleVote(item.number, vote, stats)}
         />
     );
 
