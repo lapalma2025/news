@@ -1,3 +1,4 @@
+// src/utils/constants.js - Zaktualizowany z endpointami budżetowymi
 // Kategorie newsów
 export const NEWS_CATEGORIES = [
     { id: 'all', name: 'Wszystkie', icon: 'apps' },
@@ -10,11 +11,27 @@ export const NEWS_CATEGORIES = [
     { id: 'Inne', name: 'Inne', icon: 'ellipsis-horizontal' },
 ];
 
+// Kategorie budżetowe
+export const BUDGET_CATEGORIES = [
+    { id: 'all', name: 'Wszystkie', icon: 'apps' },
+    { id: 'obrona', name: 'Obrona narodowa', icon: 'shield' },
+    { id: 'edukacja', name: 'Edukacja', icon: 'school' },
+    { id: 'zdrowie', name: 'Ochrona zdrowia', icon: 'medical' },
+    { id: 'transport', name: 'Transport', icon: 'car' },
+    { id: 'kultura', name: 'Kultura i sport', icon: 'library' },
+    { id: 'pomoc', name: 'Pomoc społeczna', icon: 'people' },
+    { id: 'rozwoj', name: 'Rozwój regionalny', icon: 'business' },
+    { id: 'rolnictwo', name: 'Rolnictwo', icon: 'leaf' },
+    { id: 'energia', name: 'Energia', icon: 'flash' },
+    { id: 'inne', name: 'Inne', icon: 'ellipsis-horizontal' }
+];
+
 // Typy postów
 export const POST_TYPES = {
     NEWS: 'news',
     POLITICIAN_POST: 'politician_post',
     COMMENT: 'comment',
+    BUDGET_ITEM: 'budget_item',
 };
 
 // Statusy
@@ -28,6 +45,7 @@ export const STATUS = {
 // Limity
 export const LIMITS = {
     NEWS_PER_PAGE: 20,
+    BUDGET_PER_PAGE: 50,
     COMMENTS_PER_PAGE: 50,
     SEARCH_MIN_LENGTH: 2,
     COMMENT_MAX_LENGTH: 300,
@@ -46,7 +64,7 @@ export const TIMEOUTS = {
 export const APP_CONFIG = {
     NAME: 'InfoApp',
     VERSION: '1.0.0',
-    DESCRIPTION: 'Najnowsze newsy i komunikaty polityków',
+    DESCRIPTION: 'Najnowsze newsy, komunikaty polityków i budżet państwa',
     WEBSITE: 'https://infoapp.pl',
     SUPPORT_EMAIL: 'pomoc@infoapp.pl',
     PRIVACY_URL: 'https://infoapp.pl/privacy',
@@ -99,6 +117,8 @@ export const STORAGE_KEYS = {
     NOTIFICATION_SETTINGS: '@infoapp:notificationSettings',
     THEME_PREFERENCE: '@infoapp:themePreference',
     LAST_UPDATE: '@infoapp:lastUpdate',
+    BUDGET_CACHE: '@infoapp:budgetCache',
+    BUDGET_FILTERS: '@infoapp:budgetFilters',
 };
 
 // API Endpoints (relatywne do Supabase URL)
@@ -108,6 +128,28 @@ export const API_ENDPOINTS = {
     POLITICIAN_POSTS: '/rest/v1/politician_posts',
     COMMENTS: '/rest/v1/comments',
     LIKES: '/rest/v1/likes',
+
+    // Endpointy budżetowe
+    BUDGET_EXPENSES: '/api/budzet/wydatki',
+    BUDGET_REVENUE: '/api/budzet/dochody',
+    BUDGET_EXECUTION: '/api/budzet/wykonanie',
+};
+
+// External API Endpoints
+export const EXTERNAL_API_ENDPOINTS = {
+    // Ministerstwo Finansów
+    MF_BUDGET: 'https://api.gov.pl/api/budzet',
+    MF_EXPENSES: 'https://www.gov.pl/api/data/budzet',
+
+    // Dane.gov.pl
+    DANE_GOV_API: 'https://api.dane.gov.pl/1.4',
+    DANE_GOV_EXPENSES: 'https://api.dane.gov.pl/1.4/datasets/397,wydatki-budzetowe-panstwa',
+    DANE_GOV_REVENUE: 'https://api.dane.gov.pl/1.4/datasets/396,dochody-budzetowe-panstwa',
+    DANE_GOV_EXECUTION: 'https://api.dane.gov.pl/1.4/datasets/398,wykonanie-budzetu-panstwa',
+
+    // GUS Bank Danych Lokalnych
+    GUS_BDL: 'https://bdl.stat.gov.pl/api/v1',
+    GUS_DATA: 'https://bdl.stat.gov.pl/api/v1/data/by-variable',
 };
 
 // Supabase Realtime channels
@@ -116,6 +158,7 @@ export const REALTIME_CHANNELS = {
     POLITICIAN_POSTS: 'politician_posts_changes',
     COMMENTS: 'comments_changes',
     LIKES: 'likes_changes',
+    BUDGET: 'budget_changes',
 };
 
 // Error messages
@@ -128,6 +171,11 @@ export const ERROR_MESSAGES = {
     UNKNOWN_ERROR: 'Wystąpił nieoczekiwany błąd',
     TIMEOUT_ERROR: 'Operacja trwała zbyt długo',
     OFFLINE_ERROR: 'Brak połączenia z internetem',
+
+    // Błędy budżetowe
+    BUDGET_API_ERROR: 'Błąd API Ministerstwa Finansów',
+    BUDGET_DATA_ERROR: 'Nie udało się pobrać danych budżetowych',
+    BUDGET_SEARCH_ERROR: 'Błąd wyszukiwania w danych budżetowych',
 };
 
 // Success messages
@@ -139,92 +187,68 @@ export const SUCCESS_MESSAGES = {
     BOOKMARK_ADDED: 'Dodano do zakładek',
     BOOKMARK_REMOVED: 'Usunięto z zakładek',
     DATA_REFRESHED: 'Dane zostały odświeżone',
+
+    // Sukcesy budżetowe
+    BUDGET_DATA_LOADED: 'Dane budżetowe zostały załadowane',
+    BUDGET_FILTERS_APPLIED: 'Filtry zostały zastosowane',
+    BUDGET_SEARCH_SUCCESS: 'Wyszukiwanie zakończone sukcesem',
 };
 
 // Validation rules
 export const VALIDATION_RULES = {
     EMAIL: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
     PHONE: /^\+?[\d\s\-\(\)]{9,}$/,
-    URL: /^https?:\/\/.+/,
-    NO_SPECIAL_CHARS: /^[a-zA-ZąćęłńóśźżĄĆĘŁŃÓŚŹŻ\s]+$/,
-    ALPHANUMERIC: /^[a-zA-Z0-9ąćęłńóśźżĄĆĘŁŃÓŚŹŻ\s]+$/,
+    URL: /^https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)$/,
+    AMOUNT: /^\d+(\.\d{1,2})?$/,
+    YEAR: /^(19|20)\d{2}$/,
+    PERCENTAGE: /^(0|[1-9]\d?)(\.\d+)?$|^100(\.0+)?$/,
 };
 
-// Device types
-export const DEVICE_TYPES = {
-    PHONE: 'phone',
-    TABLET: 'tablet',
-    DESKTOP: 'desktop',
+// Budget execution thresholds
+export const BUDGET_THRESHOLDS = {
+    EXECUTION: {
+        EXCELLENT: 90,
+        GOOD: 70,
+        WARNING: 50,
+    },
+    CHANGE: {
+        SIGNIFICANT_INCREASE: 10,
+        SIGNIFICANT_DECREASE: -10,
+    },
 };
 
-// Themes
-export const THEMES = {
-    LIGHT: 'light',
-    DARK: 'dark',
-    AUTO: 'auto',
+// Currency formatting
+export const CURRENCY_CONFIG = {
+    LOCALE: 'pl-PL',
+    CURRENCY: 'PLN',
+    MINIMUM_FRACTION_DIGITS: 0,
+    MAXIMUM_FRACTION_DIGITS: 0,
+    COMPACT_THRESHOLD: 1000000, // 1 mln - powyżej tej kwoty używaj skrótów
 };
 
-// Languages
-export const LANGUAGES = {
-    PL: 'pl',
-    EN: 'en',
+// Available years for budget data
+export const BUDGET_YEARS = [2024, 2023, 2022, 2021, 2020, 2019, 2018, 2017, 2016, 2015];
+
+// Budget data sources
+export const BUDGET_DATA_SOURCES = {
+    MF: 'Ministerstwo Finansów',
+    DANE_GOV: 'Dane.gov.pl',
+    GUS: 'Bank Danych Lokalnych GUS',
+    MANUAL: 'Dane wprowadzone ręcznie',
 };
 
-// Date formats
-export const DATE_FORMATS = {
-    FULL: 'DD MMMM YYYY, HH:mm',
-    SHORT: 'DD.MM.YYYY',
-    TIME: 'HH:mm',
-    RELATIVE: 'relative',
+// Budget item types
+export const BUDGET_ITEM_TYPES = {
+    EXPENSE: 'expense',
+    REVENUE: 'revenue',
+    EXECUTION: 'execution',
+    PLAN: 'plan',
 };
 
-// Push notification types
-export const NOTIFICATION_TYPES = {
-    NEW_NEWS: 'new_news',
-    NEW_POLITICIAN_POST: 'new_politician_post',
-    COMMENT_REPLY: 'comment_reply',
-    BREAKING_NEWS: 'breaking_news',
-    WEEKLY_SUMMARY: 'weekly_summary',
-};
-
-// User roles (dla przyszłych funkcji)
-export const USER_ROLES = {
-    GUEST: 'guest',
-    USER: 'user',
-    MODERATOR: 'moderator',
-    ADMIN: 'admin',
-    POLITICIAN: 'politician',
-};
-
-// App states
-export const APP_STATES = {
-    ACTIVE: 'active',
-    BACKGROUND: 'background',
-    INACTIVE: 'inactive',
-};
-
-export default {
-    NEWS_CATEGORIES,
-    POST_TYPES,
-    STATUS,
-    LIMITS,
-    TIMEOUTS,
-    APP_CONFIG,
-    SOCIAL_LINKS,
-    ANIMATION_DURATION,
-    SIZES,
-    Z_INDEX,
-    STORAGE_KEYS,
-    API_ENDPOINTS,
-    REALTIME_CHANNELS,
-    ERROR_MESSAGES,
-    SUCCESS_MESSAGES,
-    VALIDATION_RULES,
-    DEVICE_TYPES,
-    THEMES,
-    LANGUAGES,
-    DATE_FORMATS,
-    NOTIFICATION_TYPES,
-    USER_ROLES,
-    APP_STATES,
+// Quarter mapping
+export const QUARTERS = {
+    Q1: { name: 'Q1', months: [1, 2, 3], label: 'I kwartał' },
+    Q2: { name: 'Q2', months: [4, 5, 6], label: 'II kwartał' },
+    Q3: { name: 'Q3', months: [7, 8, 9], label: 'III kwartał' },
+    Q4: { name: 'Q4', months: [10, 11, 12], label: 'IV kwartał' },
 };

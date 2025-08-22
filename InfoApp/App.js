@@ -1,5 +1,6 @@
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -10,6 +11,7 @@ import HomeScreen from './src/screens/HomeScreen';
 import NewsScreen from './src/screens/NewsScreen';
 import PoliticiansScreen from './src/screens/PoliticiansScreen';
 import LegislationScreen from './src/screens/LegislationScreen';
+import ParlamentScreen from './src/screens/BudgetScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 
 import { COLORS } from './src/styles/colors';
@@ -29,9 +31,12 @@ const TabIcon = ({ name, focused, color, size }) => {
     case 'Politycy':
       iconName = focused ? 'people' : 'people-outline';
       break;
-    case 'Ustawy': // NOWA IKONA
+    case 'Ustawy':
       iconName = focused ? 'document-text' : 'document-text-outline';
       break;
+    case 'Sejm':
+      iconName = focused ? 'town-hall' : 'town-hall';
+      return <MaterialCommunityIcons name={iconName} size={size} color={color} />;
     case 'Profil':
       iconName = focused ? 'person' : 'person-outline';
       break;
@@ -68,7 +73,7 @@ export default function App() {
               height: 60,
             },
             tabBarLabelStyle: {
-              fontSize: 12,
+              fontSize: 11, // Zmniejszona czcionka bo mamy więcej zakładek
               fontWeight: '600',
               marginBottom: 2,
             },
@@ -110,6 +115,23 @@ export default function App() {
             component={LegislationScreen}
             options={{
               headerTitle: 'Prace Legislacyjne',
+            }}
+          />
+          <Tab.Screen
+            name="Sejm"
+            component={ParlamentScreen}
+            options={{
+              headerTitle: 'Sejm',
+              headerStyle: {
+                backgroundColor: COLORS.primary,
+                elevation: 0,
+                shadowOpacity: 0,
+              },
+              headerTintColor: COLORS.white,
+              headerTitleStyle: {
+                fontWeight: 'bold',
+                fontSize: 18,
+              },
             }}
           />
           <Tab.Screen
