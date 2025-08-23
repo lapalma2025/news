@@ -46,6 +46,9 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded, onLikeUpdate }) 
     const [likesCount, setLikesCount] = useState(0);
     const [likingPost, setLikingPost] = useState(false);
     const [contentExpanded, setContentExpanded] = useState(false);
+    const isPoliticianPost = () => {
+        return !!(item?.politician_name || item?.infoapp_politicians);
+    };
 
     useEffect(() => {
         if (item) {
@@ -633,29 +636,33 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded, onLikeUpdate }) 
                         </View>
 
                         {/* Statystyki posta z możliwością polubienia */}
-                        <View style={styles.postStats}>
-                            <TouchableOpacity
-                                style={[styles.statItem, styles.likeButton]}
-                                onPress={togglePostLike}
-                                disabled={likingPost}
-                            >
-                                <Ionicons
-                                    name={isLiked ? "heart" : "heart-outline"}
-                                    size={18}
-                                    color={isLiked ? COLORS.red : COLORS.gray}
-                                />
-                                <Text style={[
-                                    styles.statText,
-                                    isLiked && { color: COLORS.red, fontWeight: 'bold' }
-                                ]}>
-                                    {likingPost ? '...' : likesCount} polubień
-                                </Text>
-                            </TouchableOpacity>
-                            <View style={styles.statItem}>
-                                <Ionicons name="chatbubble" size={16} color={COLORS.primary} />
-                                <Text style={styles.statText}>{commentsCount} komentarzy</Text>
+                        {/* Statystyki posta z możliwością polubienia */}
+                        {/* ✅ STATYSTYKI - tylko dla newsów, ukryte dla polityków */}
+                        {!isPoliticianPost() && (
+                            <View style={styles.postStats}>
+                                <TouchableOpacity
+                                    style={[styles.statItem, styles.likeButton]}
+                                    onPress={togglePostLike}
+                                    disabled={likingPost}
+                                >
+                                    <Ionicons
+                                        name={isLiked ? "heart" : "heart-outline"}
+                                        size={18}
+                                        color={isLiked ? COLORS.red : COLORS.gray}
+                                    />
+                                    <Text style={[
+                                        styles.statText,
+                                        isLiked && { color: COLORS.red, fontWeight: 'bold' }
+                                    ]}>
+                                        {likingPost ? '...' : likesCount} polubień
+                                    </Text>
+                                </TouchableOpacity>
+                                <View style={styles.statItem}>
+                                    <Ionicons name="chatbubble" size={16} color={COLORS.primary} />
+                                    <Text style={styles.statText}>{commentsCount} komentarzy</Text>
+                                </View>
                             </View>
-                        </View>
+                        )}
                     </View>
 
                     {/* Lista komentarzy */}

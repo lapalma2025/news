@@ -194,37 +194,6 @@ const PoliticianCard = ({ post, onPress, onLike, onComment }) => {
                     <View style={styles.engagement}>
                         <TouchableOpacity
                             style={styles.engagementButton}
-                            onPress={handleLike}
-                            activeOpacity={0.7}
-                        >
-                            <Ionicons
-                                name={liked ? "heart" : "heart-outline"}
-                                size={20}
-                                color={COLORS.white}
-                            />
-                            <Text style={styles.engagementText}>{likesCount}</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                            style={styles.engagementButton}
-                            onPress={handleComment}
-                            activeOpacity={0.7}
-                        >
-                            <View style={styles.commentIconContainer}>
-                                <Ionicons name="chatbubble-outline" size={18} color={COLORS.white} />
-                                {(post.comments_count || 0) > 0 && (
-                                    <View style={styles.commentBadge}>
-                                        <Text style={styles.commentBadgeText}>
-                                            {post.comments_count > 99 ? '99+' : post.comments_count}
-                                        </Text>
-                                    </View>
-                                )}
-                            </View>
-                            <Text style={styles.engagementText}>{post.comments_count || 0}</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                            style={styles.engagementButton}
                             onPress={handleShare}
                             activeOpacity={0.7}
                         >
