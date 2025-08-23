@@ -484,7 +484,8 @@ const ParlamentScreen = () => {
 
     function applyFilters(baseList, district, nameQ) {
         let list = baseList.slice();
-        if (district) list = list.filter(m => Number(m.districtNum ?? m.district) === Number(district));
+
+        // Jeśli jest wpisane nazwisko/imię - szukaj GLOBALNIE (ignoruj okręg)
         if (nameQ && nameQ.trim()) {
             const q = norm(nameQ);
             list = list.filter(m => {
@@ -493,6 +494,11 @@ const ParlamentScreen = () => {
                 return fn.includes(q) || ln.includes(q) || `${fn} ${ln}`.includes(q) || `${ln} ${fn}`.includes(q);
             });
         }
+        // Jeśli NIE ma nazwiska, ale jest okręg - filtruj po okręgu
+        else if (district) {
+            list = list.filter(m => Number(m.districtNum ?? m.district) === Number(district));
+        }
+
         return list.sort(byNamePL).map(m => ({
             id: m.id,
             firstName: m.firstName,
