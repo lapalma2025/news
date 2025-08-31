@@ -538,37 +538,37 @@ const ProfileScreen = () => {
                                 Zalogowano przez: {user.provider === 'google' ? 'Google' : user.provider}
                             </Text>
                         )}
-                        <TouchableOpacity
-                            style={[styles.loginButton, signingIn && styles.loginButtonDisabled]}
-                            onPress={handleLogin}
-                            activeOpacity={0.8}
-                            disabled={signingIn}
-                        >
-                            {signingIn ? (
-                                <ActivityIndicator size="small" color={COLORS.white} />
-                            ) : (
-                                <>
-                                    <Ionicons
-                                        name={user?.isAnonymous ? "logo-google" : "settings-outline"}
-                                        size={18}
-                                        color={COLORS.white}
-                                        style={{ marginRight: 8 }}
-                                    />
-                                    <Text style={styles.loginButtonText}>
-                                        {user?.isAnonymous ? 'Zaloguj się przez Google' : 'Zarządzaj kontem'}
-                                    </Text>
-                                </>
-                            )}
-                        </TouchableOpacity>
-                        {/* TYMCZASOWY PRZYCISK DEBUG */}
-                        {!user?.isAnonymous && (
+                        {user?.isAnonymous ? (
                             <TouchableOpacity
-                                style={[styles.loginButton, { backgroundColor: 'red', marginTop: 10 }]}
-                                onPress={handleSignOut}
+                                style={[styles.loginButton, signingIn && styles.loginButtonDisabled]}
+                                onPress={handleLogin}
+                                activeOpacity={0.8}
+                                disabled={signingIn}
                             >
-                                <Text style={styles.loginButtonText}>WYLOGUJ SIĘ (DEBUG)</Text>
+                                {signingIn ? (
+                                    <ActivityIndicator size="small" color={COLORS.white} />
+                                ) : (
+                                    <>
+                                        <Ionicons
+                                            name="logo-google"
+                                            size={18}
+                                            color={COLORS.white}
+                                            style={{ marginRight: 8 }}
+                                        />
+                                        <Text style={styles.loginButtonText}>Zaloguj się przez Google</Text>
+                                    </>
+                                )}
+                            </TouchableOpacity>
+                        ) : (
+                            <TouchableOpacity
+                                style={styles.loginButton}
+                                onPress={handleSignOut}
+                                activeOpacity={0.8}
+                            >
+                                <Text style={styles.loginButtonText}>Wyloguj się</Text>
                             </TouchableOpacity>
                         )}
+
                     </View>
                 </LinearGradient>
 
