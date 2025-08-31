@@ -1,5 +1,8 @@
-// src/screens/HomeScreen.js – FINAL
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+// src/screens/HomeScreen.js - KOMPLETNY Z DZIAŁAJĄCĄ FUNKCJĄ handleLike
+import React, { useState, useEffect } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
+import { supabase } from '../services/supabaseClient';
+import { eventBus, EVENTS } from '../utils/eventBus';
 import {
     View,
     Text,
@@ -14,13 +17,11 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native';
 
 import { COLORS } from '../styles/colors';
 import { newsService } from '../services/newsService';
 import { politicianService } from '../services/politicianService';
-import { supabase } from '../services/supabaseClient';
-
+import { userService } from '../services/userService';
 import NewsCard from '../components/news/NewsCard';
 import PoliticianCard from '../components/politician/PoliticianCard';
 import CommentModal from '../components/modals/CommentModal';
@@ -28,244 +29,339 @@ import CommentModal from '../components/modals/CommentModal';
 const { width } = Dimensions.get('window');
 
 const HomeScreen = () => {
-    const firstLoad = useRef(true);
     const [news, setNews] = useState([]);
-    const [originalNews, setOriginalNews] = useState([]); // pełna lista (źródło prawdy dla wyszukiwania)
     const [politicianPosts, setPoliticianPosts] = useState([]);
     const [refreshing, setRefreshing] = useState(false);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
     const [modalVisible, setModalVisible] = useState(false);
     const [selectedItem, setSelectedItem] = useState(null);
+    const [newsSubscription, setNewsSubscription] = useState(null);
 
-    // realtime kanały + debounce
-    const newsChannelRef = useRef(null);
-    const polChannelRef = useRef(null);
-    const realtimeRefreshTimer = useRef(null);
-
-    // debounce dla wyszukiwarki
-    const searchTimeoutRef = useRef(null);
-    const mountedRef = useRef(false);
-
-    // === UTILS ===
-    const debounce = (fn, delay = 300) => {
-        return (...args) => {
-            if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
-            searchTimeoutRef.current = setTimeout(() => fn(...args), delay);
-        };
-    };
-
-    const softRefreshAfterRealtime = useCallback(() => {
-        if (realtimeRefreshTimer.current) clearTimeout(realtimeRefreshTimer.current);
-        // drobny bufor, żeby uniknąć spamowania zapytaniami przy wielu zmianach
-        realtimeRefreshTimer.current = setTimeout(() => {
-            loadData({ showLoader: false });
-        }, 300);
-    }, []);
-
-    // === LOAD DATA ===
-    const loadData = useCallback(async ({ showLoader = true } = {}) => {
-        if (showLoader) setLoading(true);
-        try {
-            const [newsResponse, postsResponse] = await Promise.all([
-                newsService.fetchNews(),                // już sortuje po created_at desc
-                politicianService.fetchPoliticianPosts()
-            ]);
-
-            if (newsResponse.success) {
-                // weź np. top 5 na Home
-                const data = (newsResponse.data || []).slice(0, 5);
-                setOriginalNews(data);
-                setNews((prev) => {
-                    // jeżeli nie ma aktywnego wyszukiwania — pokaż świeże
-                    if (!searchQuery.trim()) return data;
-                    // jeżeli jest, przefiltruj świeże dane po query
-                    return filterLocal(data, searchQuery);
-                });
-            } else {
-                Alert.alert('Błąd', 'Nie udało się załadować newsów');
-            }
-
-            if (postsResponse.success) {
-                // np. top 3 posty polityków
-                setPoliticianPosts((postsResponse.data || []).slice(0, 3));
-            } else {
-                Alert.alert('Błąd', 'Nie udało się załadować wpisów polityków');
-            }
-        } catch (e) {
-            console.error('Home loadData error:', e);
-            Alert.alert('Błąd', 'Wystąpił problem z połączeniem');
-        } finally {
-            if (showLoader) setLoading(false);
-        }
-    }, [searchQuery]);
-
-    // === FOCUS-REFETCH ===
-    // Odśwież dane ZA KAŻDYM razem, gdy wchodzisz na zakładkę Home
     useFocusEffect(
-        useCallback(() => {
-            if (firstLoad.current) {
-                // 🚀 pierwsze uruchomienie
-                loadData({ showLoader: true }).finally(() => {
-                    firstLoad.current = false;
-                });
-            } else {
-                // 🚀 każde kolejne wejście na Home
-                loadData({ showLoader: false });
-            }
+        React.useCallback(() => {
+            loadData();
         }, [])
     );
 
 
-    // === REALTIME ===
     useEffect(() => {
-        // NEWS realtime
-        const newsChannel = supabase
-            .channel('realtime_home_news')
-            .on(
-                'postgres_changes',
-                { event: '*', schema: 'public', table: 'infoapp_news' },
-                () => softRefreshAfterRealtime()
-            )
-            .subscribe();
-        newsChannelRef.current = newsChannel;
-
-        // POLITICIAN POSTS realtime
-        const polChannel = supabase
-            .channel('realtime_home_politician_posts')
-            .on(
-                'postgres_changes',
-                { event: '*', schema: 'public', table: 'infoapp_politician_posts' },
-                () => softRefreshAfterRealtime()
-            )
-            .subscribe();
-        polChannelRef.current = polChannel;
+        loadData();
+        setupRealtimeSubscription();
 
         return () => {
-            if (newsChannelRef.current) supabase.removeChannel(newsChannelRef.current);
-            if (polChannelRef.current) supabase.removeChannel(polChannelRef.current);
-            newsChannelRef.current = null;
-            polChannelRef.current = null;
-
-            if (realtimeRefreshTimer.current) {
-                clearTimeout(realtimeRefreshTimer.current);
-                realtimeRefreshTimer.current = null;
-            }
-            if (searchTimeoutRef.current) {
-                clearTimeout(searchTimeoutRef.current);
-                searchTimeoutRef.current = null;
+            if (newsSubscription) {
+                newsService.unsubscribeFromNews(newsSubscription);
             }
         };
-    }, [softRefreshAfterRealtime]);
+    }, []);
 
-    // === SEARCH ===
-    const filterLocal = (list, query) => {
-        if (!query.trim()) return list;
-        const q = query.toLowerCase();
-        return list.filter(
-            (item) =>
-                item.title?.toLowerCase().includes(q) ||
-                item.content?.toLowerCase().includes(q) ||
-                item.author?.toLowerCase().includes(q)
-        );
+    const loadData = async () => {
+        setLoading(true);
+        try {
+            const [newsResponse, postsResponse] = await Promise.all([
+                newsService.fetchNews(),
+                politicianService.fetchPoliticianPosts()
+            ]);
+
+            if (newsResponse.success) {
+                const user = await userService.getCurrentUser();
+
+                const newsWithActualData = await Promise.all(
+                    newsResponse.data.slice(0, 5).map(async (item) => {
+                        try {
+                            const { data: counts, error } = await supabase
+                                .from('infoapp_news')
+                                .select('likes_count, comments_count')
+                                .eq('id', item.id)
+                                .single();
+
+                            let isLikedByUser = false;
+                            if (user?.id) {
+                                const likeResp = await newsService.checkIfLiked(item.id, user.id);
+                                isLikedByUser = likeResp.success ? likeResp.data : false;
+                            }
+
+                            return {
+                                ...item,
+                                likes_count: counts?.likes_count ?? item.likes_count ?? 0,
+                                comments_count: counts?.comments_count ?? item.comments_count ?? 0,
+                                isLikedByUser
+                            };
+                        } catch {
+                            return {
+                                ...item,
+                                likes_count: item.likes_count ?? 0,
+                                comments_count: item.comments_count ?? 0,
+                                isLikedByUser: false
+                            };
+                        }
+                    })
+                );
+
+                setNews(newsWithActualData);
+            }
+
+            if (postsResponse.success) {
+                setPoliticianPosts(postsResponse.data.slice(0, 3));
+            }
+        } catch (error) {
+            Alert.alert('Błąd', 'Nie udało się załadować danych');
+        } finally {
+            setLoading(false);
+        }
     };
 
-    const runSearch = useCallback(async () => {
-        const q = searchQuery.trim();
-        if (!q) {
-            // przy pustym query wracamy do oryginalnej listy
-            setNews(originalNews);
-            return;
-        }
-
-        // 1) szybkie filtrowanie lokalne (natychmiastowy feedback)
-        const locally = filterLocal(originalNews, q);
-        setNews(locally);
-
-        // 2) dobijamy do bazy (pełniejsze wyniki)
-        try {
-            const resp = await newsService.searchNews(q);
-            if (resp.success) {
-                // aby najnowsze były na górze (gdyby backend nie sortował)
-                const sorted = [...resp.data].sort(
-                    (a, b) => new Date(b.created_at) - new Date(a.created_at)
-                );
-                setNews(sorted.slice(0, 20)); // przytnij jeśli chcesz
-            }
-        } catch (e) {
-            console.warn('Search error (fallback to local only):', e);
-        }
-    }, [searchQuery, originalNews]);
-
-    // debounce dla wyszukiwania
-    const debouncedSearch = useCallback(debounce(runSearch, 300), [runSearch]);
+    // W HomeScreen.js, dodaj po loadData():
 
     useEffect(() => {
-        if (firstLoad.current) return; // 🚀 nie wyszukuj przy pierwszym renderze
-        debouncedSearch();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [searchQuery]);
+        console.log('HomeScreen: Setting up event listeners...');
+
+        const handleNewsUpdate = (data) => {
+            console.log('HomeScreen: Received news update event:', data);
+
+            // Aktualizuj news
+            setNews(prev => prev.map(item =>
+                item.id === data.newsId
+                    ? {
+                        ...item,
+                        likes_count: data.likes_count !== undefined ? data.likes_count : item.likes_count,
+                        comments_count: data.comments_count !== undefined ? data.comments_count : item.comments_count,
+                        isLikedByUser: data.isLikedByUser !== undefined ? data.isLikedByUser : item.isLikedByUser
+                    }
+                    : item
+            ));
+
+            // Aktualizuj politician posts też
+            setPoliticianPosts(prev => prev.map(item =>
+                item.id === data.newsId
+                    ? {
+                        ...item,
+                        likes_count: data.likes_count !== undefined ? data.likes_count : item.likes_count,
+                        comments_count: data.comments_count !== undefined ? data.comments_count : item.comments_count,
+                        isLikedByUser: data.isLikedByUser !== undefined ? data.isLikedByUser : item.isLikedByUser
+                    }
+                    : item
+            ));
+        };
+
+        eventBus.on(EVENTS.NEWS_UPDATED, handleNewsUpdate);
+        eventBus.on(EVENTS.COMMENT_ADDED, handleNewsUpdate);
+
+        return () => {
+            eventBus.off(EVENTS.NEWS_UPDATED, handleNewsUpdate);
+            eventBus.off(EVENTS.COMMENT_ADDED, handleNewsUpdate);
+        };
+
+    }, []);
+
+    const setupRealtimeSubscription = () => {
+        const subscription = newsService.subscribeToNews((payload) => {
+            console.log('Real-time update:', payload);
+            if (payload.eventType === 'INSERT') {
+                setNews(prev => [payload.new, ...prev.slice(0, 4)]);
+            } else if (payload.eventType === 'UPDATE') {
+                // Aktualizuj liczniki w czasie rzeczywistym
+                setNews(prev =>
+                    prev.map(item =>
+                        item.id === payload.new.id ? payload.new : item
+                    )
+                );
+            }
+        });
+        setNewsSubscription(subscription);
+    };
 
     const onRefresh = async () => {
         setRefreshing(true);
-        setSearchQuery(''); // wyczyść wyszukiwarkę przy pull-to-refresh
-        await loadData({ showLoader: false });
+        await loadData();
         setRefreshing(false);
     };
 
-    const clearSearch = () => {
-        setSearchQuery('');
-        setNews(originalNews);
+    const handleSearch = async () => {
+        if (!searchQuery.trim()) return;
+
+        const response = await newsService.searchNews(searchQuery);
+        if (response.success) {
+            setNews(response.data);
+        } else {
+            Alert.alert('Błąd', 'Nie udało się wyszukać newsów');
+        }
     };
 
-    // === MODAL ===
     const openComments = (item, type = 'news') => {
-        // upewnij się, że przekazujesz typ ('news' | 'politician_post'), żeby CommentModal
-        // działał poprawnie dla obu rodzajów postów
         setSelectedItem({ ...item, type });
         setModalVisible(true);
     };
 
-    const handleCommentAdded = (postId, newCount) => {
-        // update liczników w newsach
-        setNews((prev) =>
-            prev.map((n) => (n.id === postId ? { ...n, comments_count: newCount } : n))
+    const handleCommentAdded = (postId, newCommentCount) => {
+        // Aktualizuj licznik komentarzy w odpowiednim poście
+        setNews(prev =>
+            prev.map(item =>
+                item.id === postId
+                    ? { ...item, comments_count: newCommentCount }
+                    : item
+            )
         );
-        setOriginalNews((prev) =>
-            prev.map((n) => (n.id === postId ? { ...n, comments_count: newCount } : n))
+
+        setPoliticianPosts(prev =>
+            prev.map(item =>
+                item.id === postId
+                    ? { ...item, comments_count: newCommentCount }
+                    : item
+            )
         );
-        // update liczników w postach polityków
-        setPoliticianPosts((prev) =>
-            prev.map((p) => (p.id === postId ? { ...p, comments_count: newCount } : p))
-        );
+        // DODAJ TO: Wyemituj event
+        eventBus.emit(EVENTS.NEWS_UPDATED, {
+            newsId: postId,
+            comments_count: newCommentCount
+        });
+
     };
 
-    // (opcjonalnie) jeśli chcesz też łapać polubienia z CommentModal:
-    const handleLikeUpdate = (postId, newLikesCount, isLiked) => {
-        // news
-        setNews((prev) =>
-            prev.map((n) =>
-                n.id === postId ? { ...n, likes_count: newLikesCount, isLikedByUser: isLiked } : n
-            )
-        );
-        setOriginalNews((prev) =>
-            prev.map((n) =>
-                n.id === postId ? { ...n, likes_count: newLikesCount, isLikedByUser: isLiked } : n
-            )
-        );
-        // politycy
-        setPoliticianPosts((prev) =>
-            prev.map((p) =>
-                p.id === postId ? { ...p, likes_count: newLikesCount, isLikedByUser: isLiked } : p
-            )
-        );
+    // GŁÓWNA FUNKCJA handleLike - DODANA
+    const handleLike = async (postId, isLiked, postType = 'news') => {
+        console.log('🏠 HomeScreen handleLike called:', {
+            postId,
+            isLiked,
+            postType,
+            timestamp: new Date().toISOString()
+        });
+
+        try {
+            // 1. Optymistyczna aktualizacja UI
+            if (postType === 'news') {
+                setNews(prev =>
+                    prev.map(item =>
+                        item.id === postId
+                            ? {
+                                ...item,
+                                likes_count: Math.max(0, (item.likes_count || 0) + (isLiked ? 1 : -1)),
+                                isLikedByUser: isLiked
+                            }
+                            : item
+                    )
+                );
+            } else {
+                setPoliticianPosts(prev =>
+                    prev.map(item =>
+                        item.id === postId
+                            ? {
+                                ...item,
+                                likes_count: Math.max(0, (item.likes_count || 0) + (isLiked ? 1 : -1)),
+                                isLikedByUser: isLiked
+                            }
+                            : item
+                    )
+                );
+            }
+
+            // 2. Sprawdź użytkownika
+            const currentUser = await userService.getCurrentUser();
+            if (!currentUser) {
+                console.log('⚠️ No user logged in - UI updated but no API call');
+                return;
+            }
+
+            console.log('🔐 User is logged in, making API call...', currentUser.id);
+
+            // 3. API call
+            let apiResponse;
+            if (postType === 'news') {
+                apiResponse = await newsService.toggleLike(postId, currentUser.id, !isLiked);
+            } else {
+                apiResponse = await politicianService.togglePostLike(postId, currentUser.id, !isLiked);
+            }
+
+            // 4. Obsługa odpowiedzi
+            if (apiResponse && apiResponse.success) {
+                console.log('✅ API call successful');
+
+                // pobierz świeże dane z DB
+                const { data: freshData, error } = await supabase
+                    .from(postType === 'news' ? 'infoapp_news' : 'infoapp_politician_posts')
+                    .select('likes_count')
+                    .eq('id', postId)
+                    .single();
+
+                if (!error && freshData) {
+                    eventBus.emit(EVENTS.LIKE_UPDATED, {
+                        newsId: postId,
+                        likes_count: freshData.likes_count,
+                        isLikedByUser: isLiked
+                    });
+
+                    if (postType === 'news') {
+                        setNews(prev =>
+                            prev.map(item =>
+                                item.id === postId
+                                    ? { ...item, likes_count: freshData.likes_count, isLikedByUser: isLiked }
+                                    : item
+                            )
+                        );
+                    } else {
+                        setPoliticianPosts(prev =>
+                            prev.map(item =>
+                                item.id === postId
+                                    ? { ...item, likes_count: freshData.likes_count, isLikedByUser: isLiked }
+                                    : item
+                            )
+                        );
+                    }
+                }
+
+                if (isLiked) {
+                    try {
+                        await userService.incrementLikes();
+                        console.log('📈 User likes incremented');
+                    } catch (error) {
+                        console.error('❌ Error incrementing user likes:', error);
+                    }
+                }
+            } else {
+                console.error('❌ API call failed:', apiResponse);
+                Alert.alert('Błąd', 'Nie udało się zaktualizować polubienia');
+            }
+
+        } catch (error) {
+            console.error('❌ Error in handleLike:', error);
+
+            // rollback
+            if (postType === 'news') {
+                setNews(prev =>
+                    prev.map(item =>
+                        item.id === postId
+                            ? {
+                                ...item,
+                                likes_count: Math.max(0, (item.likes_count || 0) + (isLiked ? -1 : 1)),
+                                isLikedByUser: !isLiked
+                            }
+                            : item
+                    )
+                );
+            } else {
+                setPoliticianPosts(prev =>
+                    prev.map(item =>
+                        item.id === postId
+                            ? {
+                                ...item,
+                                likes_count: Math.max(0, (item.likes_count || 0) + (isLiked ? -1 : 1)),
+                                isLikedByUser: !isLiked
+                            }
+                            : item
+                    )
+                );
+            }
+
+            Alert.alert('Błąd', 'Wystąpił problem z polubieniem');
+        }
     };
 
     if (loading) {
         return (
             <SafeAreaView style={styles.container}>
                 <View style={styles.loadingContainer}>
-                    <Text style={styles.loadingText}>Ładowanie…</Text>
+                    <Text style={styles.loadingText}>Ładowanie...</Text>
                 </View>
             </SafeAreaView>
         );
@@ -279,58 +375,36 @@ const HomeScreen = () => {
                     <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
                 }
             >
-                {/* HEADER */}
+                {/* Header z wyszukiwaniem */}
                 <LinearGradient
                     colors={[COLORS.gradientStart, COLORS.gradientEnd]}
                     style={styles.header}
                 >
                     <Text style={styles.welcomeText}>Witaj w InfoApp</Text>
-                    <Text style={styles.subtitleText}>
-                        Bądź na bieżąco z najważniejszymi wydarzeniami
-                    </Text>
+                    <Text style={styles.subtitleText}>Bądź na bieżąco z najważniejszymi wydarzeniami</Text>
 
-                    {/* SEARCH */}
                     <View style={styles.searchContainer}>
-                        <View style={styles.searchInputContainer}>
-                            <Ionicons name="search" size={20} color={COLORS.gray} style={styles.searchIcon} />
-                            <TextInput
-                                style={styles.searchInput}
-                                placeholder="Szukaj newsów..."
-                                placeholderTextColor={COLORS.gray}
-                                value={searchQuery}
-                                onChangeText={setSearchQuery}
-                                returnKeyType="search"
-                                autoCorrect={false}
-                                autoCapitalize="none"
-                            />
-                            {searchQuery.length > 0 && (
-                                <TouchableOpacity onPress={clearSearch} style={styles.clearButton}>
-                                    <Ionicons name="close-circle" size={20} color={COLORS.gray} />
-                                </TouchableOpacity>
-                            )}
-                        </View>
+                        <TextInput
+                            style={styles.searchInput}
+                            placeholder="Szukaj newsów..."
+                            placeholderTextColor={COLORS.gray}
+                            value={searchQuery}
+                            onChangeText={setSearchQuery}
+                            onSubmitEditing={handleSearch}
+                        />
+                        <TouchableOpacity style={styles.searchButton} onPress={handleSearch}>
+                            <Ionicons name="search" size={20} color={COLORS.white} />
+                        </TouchableOpacity>
                     </View>
-
-                    {searchQuery.length > 0 && (
-                        <View style={styles.searchResults}>
-                            <Text style={styles.searchResultsText}>
-                                {news.length} {news.length === 1 ? 'wynik' : 'wyników'} dla "{searchQuery}"
-                            </Text>
-                        </View>
-                    )}
                 </LinearGradient>
 
-                {/* NEWS SECTION */}
+                {/* Sekcja najnowszych newsów */}
                 <View style={styles.section}>
                     <View style={styles.sectionHeader}>
-                        <Text style={styles.sectionTitle}>
-                            {searchQuery ? 'Wyniki wyszukiwania' : 'Najnowsze Newsy'}
-                        </Text>
-                        {!searchQuery && (
-                            <TouchableOpacity onPress={() => loadData({ showLoader: true })}>
-                                <Text style={styles.seeAllText}>Odśwież</Text>
-                            </TouchableOpacity>
-                        )}
+                        <Text style={styles.sectionTitle}>Najnowsze Newsy</Text>
+                        <TouchableOpacity>
+                            <Text style={styles.seeAllText}>Zobacz więcej</Text>
+                        </TouchableOpacity>
                     </View>
 
                     {news.length > 0 ? (
@@ -339,101 +413,194 @@ const HomeScreen = () => {
                                 key={item.id}
                                 news={item}
                                 onPress={() => openComments(item, 'news')}
+                                onLike={(postId, isLiked) => handleLike(postId, isLiked, 'news')}
                                 onComment={() => openComments(item, 'news')}
                             />
                         ))
                     ) : (
                         <View style={styles.emptyState}>
-                            <Ionicons name="search-outline" size={48} color={COLORS.gray} />
-                            <Text style={styles.emptyStateText}>
-                                {searchQuery ? 'Brak wyników wyszukiwania' : 'Brak newsów'}
-                            </Text>
-                            {searchQuery && (
-                                <TouchableOpacity onPress={clearSearch} style={styles.clearSearchButton}>
-                                    <Text style={styles.clearSearchText}>Wyczyść wyszukiwanie</Text>
-                                </TouchableOpacity>
-                            )}
+                            <Ionicons name="newspaper-outline" size={48} color={COLORS.gray} />
+                            <Text style={styles.emptyStateText}>Brak newsów do wyświetlenia</Text>
                         </View>
                     )}
                 </View>
 
-                {/* POLITICIANS SECTION (ukryj przy wyszukiwaniu) */}
-                {!searchQuery && (
-                    <View style={styles.section}>
-                        <View style={styles.sectionHeader}>
-                            <Text style={styles.sectionTitle}>Komunikaty Polityków</Text>
-                            <TouchableOpacity onPress={() => loadData({ showLoader: true })}>
-                                <Text style={styles.seeAllText}>Odśwież</Text>
-                            </TouchableOpacity>
-                        </View>
-
-                        {politicianPosts.length > 0 ? (
-                            politicianPosts.map((item) => (
-                                <PoliticianCard
-                                    key={item.id}
-                                    post={item}
-                                    onPress={() => openComments(item, 'politician_post')}
-                                    onComment={() => openComments(item, 'politician_post')}
-                                />
-                            ))
-                        ) : (
-                            <View style={styles.emptyState}>
-                                <Ionicons name="person-outline" size={48} color={COLORS.gray} />
-                                <Text style={styles.emptyStateText}>Brak komunikatów polityków</Text>
-                            </View>
-                        )}
+                {/* Sekcja wpisów polityków */}
+                <View style={styles.section}>
+                    <View style={styles.sectionHeader}>
+                        <Text style={styles.sectionTitle}>Politycy na żywo</Text>
+                        <TouchableOpacity>
+                            <Text style={styles.seeAllText}>Zobacz więcej</Text>
+                        </TouchableOpacity>
                     </View>
-                )}
+
+                    {politicianPosts.length > 0 ? (
+                        politicianPosts.map((item) => (
+                            <PoliticianCard
+                                key={item.id}
+                                post={item}
+                                onPress={() => openComments(item, 'politician_post')}
+                                onLike={(postId, isLiked) => handleLike(postId, isLiked, 'politician_post')}
+                                onComment={() => openComments(item, 'politician_post')}
+                            />
+                        ))
+                    ) : (
+                        <View style={styles.emptyState}>
+                            <Ionicons name="people-outline" size={48} color={COLORS.gray} />
+                            <Text style={styles.emptyStateText}>Brak wpisów polityków</Text>
+                        </View>
+                    )}
+                </View>
+
+                {/* Statystyki */}
+                <View style={styles.statsSection}>
+                    <LinearGradient
+                        colors={[COLORS.primary, COLORS.secondary]}
+                        style={styles.statsCard}
+                    >
+                        <Text style={styles.statsTitle}>Dzisiaj w InfoApp</Text>
+                        <View style={styles.statsRow}>
+                            <View style={styles.statItem}>
+                                <Text style={styles.statNumber}>{news.length}</Text>
+                                <Text style={styles.statLabel}>Nowych newsów</Text>
+                            </View>
+                            <View style={styles.statItem}>
+                                <Text style={styles.statNumber}>{politicianPosts.length}</Text>
+                                <Text style={styles.statLabel}>Wpisów polityków</Text>
+                            </View>
+                        </View>
+                    </LinearGradient>
+                </View>
             </ScrollView>
 
-            {/* MODAL */}
+            {/* Modal komentarzy */}
             <CommentModal
-                key={selectedItem?.id}
                 visible={modalVisible}
                 onClose={() => setModalVisible(false)}
                 item={selectedItem}
                 onCommentAdded={handleCommentAdded}
-                onLikeUpdate={handleLikeUpdate}
+                onLikeUpdate={handleLike}
             />
         </SafeAreaView>
     );
 };
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: COLORS.background },
-    scrollView: { flex: 1 },
-    loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    loadingText: { fontSize: 16, color: COLORS.gray },
-    header: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 30 },
-    welcomeText: { fontSize: 28, fontWeight: '700', color: COLORS.white, textAlign: 'center', marginBottom: 8 },
-    subtitleText: { fontSize: 16, color: COLORS.white, textAlign: 'center', opacity: 0.9, marginBottom: 25 },
-    searchContainer: { marginBottom: 10 },
-    searchInputContainer: {
+    container: {
+        flex: 1,
+        backgroundColor: COLORS.background,
+    },
+    scrollView: {
+        flex: 1,
+    },
+    loadingContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    loadingText: {
+        fontSize: 16,
+        color: COLORS.gray,
+    },
+    header: {
+        padding: 20,
+        paddingTop: 10,
+    },
+    welcomeText: {
+        fontSize: 28,
+        fontWeight: 'bold',
+        color: COLORS.white,
+        marginBottom: 8,
+    },
+    subtitleText: {
+        fontSize: 16,
+        color: COLORS.white,
+        opacity: 0.9,
+        marginBottom: 20,
+    },
+    searchContainer: {
         flexDirection: 'row',
         alignItems: 'center',
         backgroundColor: COLORS.white,
         borderRadius: 25,
-        paddingHorizontal: 16,
-        paddingVertical: 12,
-        shadowColor: COLORS.black,
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-        elevation: 3,
+        paddingHorizontal: 15,
+        paddingVertical: 5,
     },
-    searchIcon: { marginRight: 10 },
-    searchInput: { flex: 1, fontSize: 16, color: COLORS.black },
-    clearButton: { padding: 4 },
-    searchResults: { paddingTop: 10 },
-    searchResultsText: { color: COLORS.white, fontSize: 14, textAlign: 'center', opacity: 0.9 },
-    section: { paddingHorizontal: 20, paddingTop: 20 },
-    sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-    sectionTitle: { fontSize: 20, fontWeight: '700', color: COLORS.black },
-    seeAllText: { fontSize: 14, color: COLORS.primary, fontWeight: '600' },
-    emptyState: { alignItems: 'center', paddingVertical: 40 },
-    emptyStateText: { fontSize: 16, color: COLORS.gray, textAlign: 'center', marginTop: 10 },
-    clearSearchButton: { marginTop: 15, paddingHorizontal: 20, paddingVertical: 10, backgroundColor: COLORS.primary, borderRadius: 20 },
-    clearSearchText: { color: COLORS.white, fontWeight: '600' },
+    searchInput: {
+        flex: 1,
+        fontSize: 16,
+        color: COLORS.black,
+        paddingVertical: 10,
+    },
+    searchButton: {
+        backgroundColor: COLORS.primary,
+        borderRadius: 20,
+        padding: 8,
+        marginLeft: 10,
+    },
+    section: {
+        paddingHorizontal: 20,
+        paddingVertical: 10,
+    },
+    sectionHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 15,
+    },
+    sectionTitle: {
+        fontSize: 20,
+        fontWeight: 'bold',
+        color: COLORS.black,
+    },
+    seeAllText: {
+        fontSize: 14,
+        color: COLORS.primary,
+        fontWeight: '600',
+    },
+    emptyState: {
+        alignItems: 'center',
+        paddingVertical: 40,
+    },
+    emptyStateText: {
+        fontSize: 16,
+        color: COLORS.gray,
+        marginTop: 10,
+    },
+    statsSection: {
+        paddingHorizontal: 20,
+        paddingBottom: 20,
+    },
+    statsCard: {
+        borderRadius: 16,
+        padding: 20,
+    },
+    statsTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: COLORS.white,
+        marginBottom: 15,
+        textAlign: 'center',
+    },
+    statsRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-around',
+    },
+    statItem: {
+        alignItems: 'center',
+    },
+    statNumber: {
+        fontSize: 24,
+        fontWeight: 'bold',
+        color: COLORS.white,
+    },
+    statLabel: {
+        fontSize: 14,
+        color: COLORS.white,
+        opacity: 0.9,
+        marginTop: 4,
+        textAlign: 'center',
+    },
 });
 
 export default HomeScreen;

@@ -29,6 +29,7 @@ export const commentService = {
                     post_type: commentData.post_type,
                     author_name: commentData.author_name,
                     content: commentData.content,
+                    user_id: commentData.user_id,
                     created_at: getCurrentTimestamp(),
                     is_active: true
                 }])

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
     View,
     Text,
@@ -13,6 +13,7 @@ import {
     Alert,
     Dimensions,
 } from 'react-native';
+import { authService } from '../../services/authService';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../styles/colors';
@@ -41,33 +42,29 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded, onLikeUpdate }) 
     const [showNameInput, setShowNameInput] = useState(true);
     const [commentsCount, setCommentsCount] = useState(0);
     const [currentUser, setCurrentUser] = useState(null);
+    const [editingComment, setEditingComment] = useState(null);
+    const [editText, setEditText] = useState('');
     const [commentSubscription, setCommentSubscription] = useState(null);
     const [isLiked, setIsLiked] = useState(false);
     const [likesCount, setLikesCount] = useState(0);
     const [likingPost, setLikingPost] = useState(false);
     const [contentExpanded, setContentExpanded] = useState(false);
+    const [isComponentMounted, setIsComponentMounted] = useState(false);
+
     const isPoliticianPost = () => {
         return !!(item?.politician_name || item?.infoapp_politicians);
     };
 
     useEffect(() => {
-        if (item) {
-            setLikesCount(item.likes_count || 0);
-            if (currentUser?.id) {
-                checkIfPostLiked(currentUser.id);
+        if (visible && !isComponentMounted) {
+            console.log('CommentModal: First mount for item:', item?.id);
+            setIsComponentMounted(true);
+            if (item) {
+                initializeData();
             }
-        }
-    }, [item, currentUser]);
-
-    // W CommentModal.js - ZASTĄP problematyczny useEffect tym:
-
-    // W CommentModal.js - ZOSTAW TYLKO TEN useEffect:
-    useEffect(() => {
-        if (visible && item) {
-            console.log('CommentModal opened for item:', item.id);
-            initializeData();
-        } else {
-            // Reset stanu gdy modal się zamyka
+        } else if (!visible) {
+            console.log('CommentModal: Closing, resetting state');
+            setIsComponentMounted(false);
             setComment('');
             setUserName('');
             setShowNameInput(true);
@@ -85,6 +82,24 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded, onLikeUpdate }) 
             }
         };
     }, [visible, item?.id]);
+
+
+    const handleCommentSubmit = useCallback(() => {
+        if (!addingComment) {
+            addComment();
+        }
+    }, [comment, userName, currentUser, item, addingComment]);
+
+    useEffect(() => {
+        if (item) {
+            setLikesCount(item.likes_count || 0);
+            if (currentUser?.id) {
+                checkIfPostLiked(currentUser.id);
+            }
+        }
+    }, [item, currentUser]);
+
+    // W CommentModal.js - ZASTĄP problematyczny useEffect tym:
 
     useEffect(() => {
         if (visible && item && item.id) {
@@ -149,6 +164,79 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded, onLikeUpdate }) 
         }
     };
 
+    useEffect(() => {
+        if (visible && item) {
+            loadComments();
+            loadCurrentUser();
+        }
+    }, [visible, item]);
+
+
+    const loadCurrentUser = async () => {
+        const user = await authService.getCurrentUser();
+        setCurrentUser(user);
+
+        if (user) {
+            const profile = await authService.getUserProfile();
+            setUserName(profile.displayName);
+        }
+    };
+
+    const handleEditComment = (comment) => {
+        setEditingComment(comment);
+        setEditText(comment.content);
+    };
+
+    const handleUpdateComment = async () => {
+        if (!editText.trim()) {
+            Alert.alert('Błąd', 'Komentarz nie może być pusty');
+            return;
+        }
+
+        try {
+            const response = await commentService.updateComment(editingComment.id, {
+                content: editText.trim()
+            });
+
+            if (response.success) {
+                setEditingComment(null);
+                setEditText('');
+                Alert.alert('Sukces', 'Komentarz został zaktualizowany!');
+            } else {
+                Alert.alert('Błąd', response.error || 'Nie udało się zaktualizować komentarza');
+            }
+        } catch (error) {
+            console.error('Error updating comment:', error);
+            Alert.alert('Błąd', 'Wystąpił problem z aktualizacją komentarza');
+        }
+    };
+
+    const handleDeleteComment = (comment) => {
+        Alert.alert(
+            'Usuń komentarz',
+            'Czy na pewno chcesz usunąć ten komentarz?',
+            [
+                { text: 'Anuluj', style: 'cancel' },
+                {
+                    text: 'Usuń',
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            const response = await commentService.deleteComment(comment.id);
+                            if (response.success) {
+                                Alert.alert('Sukces', 'Komentarz został usunięty');
+                            } else {
+                                Alert.alert('Błąd', response.error || 'Nie udało się usunąć komentarza');
+                            }
+                        } catch (error) {
+                            console.error('Error deleting comment:', error);
+                            Alert.alert('Błąd', 'Wystąpił problem z usuwaniem komentarza');
+                        }
+                    }
+                }
+            ]
+        );
+    };
     // W CommentModal.js - upewnij się że checkIfPostLiked NIE wywołuje onLikeUpdate:
     // W CommentModal.js - ZASTĄP checkIfPostLiked() tym:
     const checkIfPostLiked = async (userId) => {
@@ -285,59 +373,35 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded, onLikeUpdate }) 
         if (!item) return;
 
         const postType = item.politician_name ? 'politician_post' : 'news';
-        console.log('Setting up real-time for:', item.id, postType);
+        console.log('🔄 Setting up real-time for:', item.id, postType);
 
-        // Sprawdź czy funkcja istnieje
         if (commentService.subscribeToComments) {
             const subscription = commentService.subscribeToComments(
                 item.id,
                 postType,
                 (payload) => {
-                    console.log('Real-time comment update:', payload);
+                    console.log('🔥 REAL-TIME EVENT RECEIVED:', payload.eventType, payload.new?.id);
                     if (payload.eventType === 'INSERT') {
-                        // Sprawdź czy to nie jest duplikat tymczasowego komentarza
                         const newComment = {
                             ...payload.new,
                             likes: 0,
                             isLiked: false
                         };
 
-                        console.log('Checking for duplicate comment:', newComment.content);
-
+                        console.log('➕ Adding real-time comment to UI:', newComment.id);
                         setComments(prev => {
-                            // Usuń tymczasowe komentarze o tej samej treści
-                            const filtered = prev.filter(c =>
-                                !(c.isTemp && c.content === newComment.content && c.author_name === newComment.author_name)
-                            );
-
-                            // Sprawdź czy komentarz już nie istnieje
-                            const exists = filtered.some(c => c.id === newComment.id);
-                            if (!exists) {
-                                console.log('Adding real-time comment:', newComment.id);
-                                return [newComment, ...filtered];
-                            }
-
-                            return filtered;
-                        });
-
-                        setCommentsCount(prev => {
-                            const newCount = Math.max(prev, comments.filter(c => !c.isTemp).length + 1);
-                            console.log('Real-time comments count update:', prev, '->', newCount);
-
-                            // Powiadom parent component
-                            if (onCommentAdded) {
-                                console.log('Notifying parent about real-time comment');
-                                onCommentAdded(item.id, newCount);
-                            }
-
-                            return newCount;
+                            console.log('📝 Comments before:', prev.length);
+                            const updated = [newComment, ...prev];
+                            console.log('📝 Comments after:', updated.length);
+                            return updated;
                         });
                     }
                 }
             );
             setCommentSubscription(subscription);
+            console.log('✅ Real-time subscription created');
         } else {
-            console.log('Real-time subscriptions not available');
+            console.log('❌ Real-time subscriptions NOT AVAILABLE');
         }
     };
 
@@ -357,154 +421,38 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded, onLikeUpdate }) 
         }
     };
 
+
     const addComment = async () => {
-        if (!comment.trim()) {
-            Alert.alert('Błąd', 'Komentarz nie może być pusty');
+        if (!currentUser || !comment.trim() || !userName.trim()) {
+            Alert.alert('Błąd', 'Wypełnij wszystkie pola');
             return;
         }
-
-        if (!userName.trim()) {
-            Alert.alert('Błąd', 'Wprowadź swoje imię');
-            return;
-        }
-
-        if (!currentUser) {
-            Alert.alert('Błąd', 'Błąd systemu użytkowników');
-            return;
-        }
-
-        const commentContent = comment.trim();
-        const authorName = userName.trim();
 
         try {
             setAddingComment(true);
-
             const postType = item.politician_name ? 'politician_post' : 'news';
-            console.log('Adding comment to:', item.id, postType, 'by:', authorName);
 
-            // Zapisz imię użytkownika dla przyszłych komentarzy
-            if (userName !== currentUser.displayName) {
-                await userService.updateUser({ displayName: userName });
-                setShowNameInput(false);
-            }
-
-            // DODAJ KOMENTARZ NATYCHMIAST DO UI (optymistyczna aktualizacja)
-            const tempComment = {
-                id: `temp-${Date.now()}`,
-                content: commentContent,
-                author_name: authorName,
-                created_at: new Date().toISOString(),
-                likes: 0,
-                isLiked: false,
-                isTemp: true // Oznacz jako tymczasowy
-            };
-
-            console.log('Adding temporary comment to UI:', tempComment);
-            setComments(prev => [tempComment, ...prev]);
-            setCommentsCount(prev => {
-                const newCount = prev + 1;
-                console.log('Temporary update comments count:', prev, '->', newCount);
-
-                // Powiadom parent NATYCHMIAST
-                if (onCommentAdded) {
-                    console.log('Notifying parent about temporary comment');
-                    onCommentAdded(item.id, newCount);
-                }
-
-                return newCount;
-            });
-
-            // Wyczyść formularz natychmiast
-            setComment('');
-
-            // Dodaj komentarz do Supabase
             const commentResponse = await commentService.addComment({
                 post_id: item.id,
                 post_type: postType,
-                author_name: authorName,
-                content: commentContent,
+                author_name: userName.trim(),
+                content: comment.trim(),
+                user_id: currentUser.id
             });
 
             if (commentResponse.success) {
-                console.log('Comment added to database successfully:', commentResponse.data);
-
-                // BEZPOŚREDNIA AKTUALIZACJA LICZNIKA W BAZIE DANYCH
-                try {
-                    if (postType === 'news') {
-                        // Bezpośrednia aktualizacja licznika dla newsów
-                        const { error: updateError } = await supabase
-                            .from('infoapp_news')
-                            .update({
-                                comments_count: supabase.raw('COALESCE(comments_count, 0) + 1')
-                            })
-                            .eq('id', item.id);
-
-                        if (updateError) {
-                            console.error('Error updating news comments count:', updateError);
-                        } else {
-                            console.log('News comments count updated successfully');
-                        }
-                    } else {
-                        // Bezpośrednia aktualizacja licznika dla wpisów polityków
-                        const { error: updateError } = await supabase
-                            .from('infoapp_politician_posts')
-                            .update({
-                                comments_count: supabase.raw('COALESCE(comments_count, 0) + 1')
-                            })
-                            .eq('id', item.id);
-
-                        if (updateError) {
-                            console.error('Error updating politician post comments count:', updateError);
-                        } else {
-                            console.log('Politician post comments count updated successfully');
-                        }
-                    }
-                } catch (dbError) {
-                    console.error('Database update error:', dbError);
-                }
-
-                // Aktualizuj statystyki użytkownika
-                await userService.incrementComments();
-
+                setComment(''); // Wyczyść formularz
                 Alert.alert('Sukces', 'Komentarz został dodany!');
-
-                // Nie usuwaj tymczasowego komentarza - zostaw go, real-time może go zastąpić lub nie
-                // Jeśli real-time nie działa, komentarz pozostanie jako tymczasowy ale będzie widoczny
-
-                // Fallback: Jeśli nie ma real-time, zamień tymczasowy na prawdziwy
                 setTimeout(() => {
-                    setComments(prev => prev.map(c =>
-                        c.isTemp && c.content === commentContent && c.author_name === authorName
-                            ? { ...commentResponse.data, likes: 0, isLiked: false }
-                            : c
-                    ));
-                }, 1000); // Daj czas real-time na zadziałanie
-
+                    console.log('🔄 Manual refresh comments after 1 second');
+                    loadComments();
+                }, 1000);
+                // Real-time subscription automatycznie zaktualizuje UI
             } else {
-                console.error('Failed to add comment to database');
-                // Usuń tymczasowy komentarz w przypadku błędu
-                setComments(prev => prev.filter(c => !(c.isTemp && c.content === commentContent)));
-                setCommentsCount(prev => Math.max(0, prev - 1));
-
-                // Cofnij aktualizację parent component
-                if (onCommentAdded) {
-                    onCommentAdded(item.id, commentsCount);
-                }
-
                 Alert.alert('Błąd', 'Nie udało się dodać komentarza');
             }
         } catch (error) {
             console.error('Error adding comment:', error);
-
-            // Usuń tymczasowy komentarz w przypadku błędu
-            setComments(prev => prev.filter(c => !(c.isTemp && c.content === commentContent)));
-            setCommentsCount(prev => Math.max(0, prev - 1));
-
-            // Cofnij aktualizację parent component
-            if (onCommentAdded) {
-                onCommentAdded(item.id, commentsCount);
-            }
-
             Alert.alert('Błąd', 'Wystąpił problem z dodawaniem komentarza');
         } finally {
             setAddingComment(false);
@@ -692,6 +640,22 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded, onLikeUpdate }) 
                                                 {commentItem.isTemp && (
                                                     <Ionicons name="checkmark-circle" size={14} color={COLORS.green} />
                                                 )}
+                                                {(currentUser && currentUser.id === commentItem.user_id) && !commentItem.isTemp && (
+                                                    <View style={styles.commentActions}>
+                                                        <TouchableOpacity
+                                                            onPress={() => handleEditComment(commentItem)}
+                                                            style={styles.actionButton}
+                                                        >
+                                                            <Ionicons name="pencil" size={14} color={COLORS.primary} />
+                                                        </TouchableOpacity>
+                                                        <TouchableOpacity
+                                                            onPress={() => handleDeleteComment(commentItem)}
+                                                            style={styles.actionButton}
+                                                        >
+                                                            <Ionicons name="trash" size={14} color={COLORS.danger || COLORS.red} />
+                                                        </TouchableOpacity>
+                                                    </View>
+                                                )}
                                             </View>
                                             <Text style={[
                                                 styles.commentText,
@@ -740,61 +704,76 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded, onLikeUpdate }) 
 
                     {/* Input do dodawania komentarzy */}
                     <View style={styles.inputContainer}>
-                        {showNameInput && (
-                            <View style={styles.nameInputContainer}>
-                                <TextInput
-                                    style={styles.nameInput}
-                                    placeholder="Twoje imię lub nick..."
-                                    value={userName}
-                                    onChangeText={setUserName}
-                                    placeholderTextColor={COLORS.gray}
-                                    maxLength={30}
-                                />
-                                <Text style={styles.nameHint}>
-                                    To imię będzie widoczne przy Twoich komentarzach
+                        {currentUser ? (
+                            <>
+                                {showNameInput && (
+                                    <View style={styles.nameInputContainer}>
+                                        <TextInput
+                                            style={styles.nameInput}
+                                            placeholder="Twoje imię lub nick..."
+                                            value={userName}
+                                            onChangeText={setUserName}
+                                            placeholderTextColor={COLORS.gray}
+                                            maxLength={30}
+                                        />
+                                        <Text style={styles.nameHint}>
+                                            To imię będzie widoczne przy Twoich komentarzach
+                                        </Text>
+                                    </View>
+                                )}
+
+                                <View style={styles.commentInputRow}>
+                                    <TextInput
+                                        style={styles.commentInput}
+                                        placeholder={`Dodaj komentarz${userName ? ` jako ${userName}` : ''}...`}
+                                        value={comment}
+                                        onChangeText={setComment}
+                                        multiline
+                                        maxLength={300}
+                                        placeholderTextColor={COLORS.gray}
+                                    />
+                                    <TouchableOpacity
+                                        style={[
+                                            styles.sendButton,
+                                            (!comment.trim() || !userName.trim() || addingComment) && styles.sendButtonDisabled
+                                        ]}
+                                        onPress={addComment}
+                                        disabled={!comment.trim() || !userName.trim() || addingComment}
+                                    >
+                                        {addingComment ? (
+                                            <Ionicons name="hourglass-outline" size={20} color={COLORS.white} />
+                                        ) : (
+                                            <Ionicons name="send" size={20} color={COLORS.white} />
+                                        )}
+                                    </TouchableOpacity>
+                                </View>
+
+                                <View style={styles.inputFooter}>
+                                    <Text style={styles.characterCount}>
+                                        {comment.length}/300 znaków
+                                    </Text>
+                                    {!showNameInput && userName && (
+                                        <TouchableOpacity
+                                            onPress={() => setShowNameInput(true)}
+                                            style={styles.changeNameButton}
+                                        >
+                                            <Text style={styles.changeNameText}>Zmień imię</Text>
+                                        </TouchableOpacity>
+                                    )}
+                                </View>
+                            </>
+                        ) : (
+                            <View style={styles.loginPrompt}>
+                                <Ionicons name="lock-closed" size={24} color={COLORS.gray} />
+                                <Text style={styles.loginPromptTitle}>Wymagane logowanie</Text>
+                                <Text style={styles.loginPromptText}>
+                                    Aby dodawać komentarze, musisz być zalogowany.
+                                </Text>
+                                <Text style={styles.loginPromptHint}>
+                                    Przejdź do zakładki Profil i zaloguj się przez Google.
                                 </Text>
                             </View>
                         )}
-
-                        <View style={styles.commentInputRow}>
-                            <TextInput
-                                style={styles.commentInput}
-                                placeholder={`Dodaj komentarz${userName ? ` jako ${userName}` : ''}...`}
-                                value={comment}
-                                onChangeText={setComment}
-                                multiline
-                                maxLength={300}
-                                placeholderTextColor={COLORS.gray}
-                            />
-                            <TouchableOpacity
-                                style={[
-                                    styles.sendButton,
-                                    (!comment.trim() || !userName.trim() || addingComment) && styles.sendButtonDisabled
-                                ]}
-                                onPress={addComment}
-                                disabled={!comment.trim() || !userName.trim() || addingComment}
-                            >
-                                {addingComment ? (
-                                    <Ionicons name="hourglass-outline" size={20} color={COLORS.white} />
-                                ) : (
-                                    <Ionicons name="send" size={20} color={COLORS.white} />
-                                )}
-                            </TouchableOpacity>
-                        </View>
-
-                        <View style={styles.inputFooter}>
-                            <Text style={styles.characterCount}>
-                                {comment.length}/300 znaków
-                            </Text>
-                            {!showNameInput && userName && (
-                                <TouchableOpacity
-                                    onPress={() => setShowNameInput(true)}
-                                    style={styles.changeNameButton}
-                                >
-                                    <Text style={styles.changeNameText}>Zmień imię</Text>
-                                </TouchableOpacity>
-                            )}
-                        </View>
                     </View>
                 </KeyboardAvoidingView>
             </SafeAreaView>
@@ -972,6 +951,34 @@ const styles = StyleSheet.create({
     },
     tempCommentText: {
         color: COLORS.black,
+    },
+    loginPrompt: {
+        alignItems: 'center',
+        paddingVertical: 24,
+        paddingHorizontal: 20,
+    },
+    loginPromptTitle: {
+        fontSize: 18,
+        fontWeight: '600',
+        color: COLORS.textPrimary,
+        marginTop: 12,
+        marginBottom: 8,
+    },
+    loginPromptText: {
+        fontSize: 16,
+        color: COLORS.textSecondary,
+        textAlign: 'center',
+        marginBottom: 4,
+    },
+    loginPromptHint: {
+        fontSize: 14,
+        color: COLORS.textLight,
+        textAlign: 'center',
+        fontStyle: 'italic',
+    },
+    actionButton: {
+        padding: 8,
+        marginLeft: 4,
     },
     commentActions: {
         flexDirection: 'row',

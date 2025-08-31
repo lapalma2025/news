@@ -1,5 +1,6 @@
-// src/components/news/NewsCard.js - OSTATECZNIE POPRAWIONY z historią czytania
+// src/components/news/NewsCard.js - KOMPLETNIE POPRAWIONY
 import React, { useState, useEffect } from 'react';
+import { supabase } from '../../services/supabaseClient';
 import {
     View,
     Text,
@@ -12,15 +13,15 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../styles/colors';
 import { newsService } from '../../services/newsService';
 import { userService } from '../../services/userService';
-import { readingHistoryService } from '../../services/readingHistoryService'; // DODANY IMPORT
+import { readingHistoryService } from '../../services/readingHistoryService';
 
 const NewsCard = ({ news, onPress, onComment, onLike, isLiked = false }) => {
     const [likesCount, setLikesCount] = useState(news.likes_count || 0);
     const [commentsCount, setCommentsCount] = useState(news.comments_count || 0);
     const [isFavorite, setIsFavorite] = useState(false);
     const [currentUser, setCurrentUser] = useState(null);
-    const [subscription, setSubscription] = useState(null);
     const [liked, setLiked] = useState(isLiked);
+    const [isInitialized, setIsInitialized] = useState(false);
 
     // Reaguj na zmiany w props news
     useEffect(() => {
@@ -33,88 +34,167 @@ const NewsCard = ({ news, onPress, onComment, onLike, isLiked = false }) => {
 
         setLikesCount(news.likes_count || 0);
         setCommentsCount(news.comments_count || 0);
-        setLiked(news.isLikedByUser || isLiked);
-    }, [news.likes_count, news.comments_count, news.isLikedByUser]);
 
-    // Reaguj na zmiany w props isLiked
-    useEffect(() => {
-        console.log('NewsCard: isLiked prop changed', isLiked);
-        setLiked(isLiked);
-    }, [isLiked]);
+        // Użyj isLikedByUser z props jeśli dostępne
+        if (news.isLikedByUser !== undefined) {
+            setLiked(news.isLikedByUser);
+        } else {
+            setLiked(isLiked);
+        }
+    }, [news.likes_count, news.comments_count, news.isLikedByUser, isLiked]);
 
+    // Inicjalizacja komponentu
     useEffect(() => {
         initializeCard();
-
-        return () => {
-            if (subscription) {
-                newsService.unsubscribeFromNews(subscription);
-            }
-        };
+        setupAuthListener();
     }, [news.id]);
+
+    // Opóźniona inicjalizacja dla SSO
+    useEffect(() => {
+        if (!isInitialized) {
+            const delayedInit = setTimeout(() => {
+                console.log('Delayed initialization check...');
+                initializeCard();
+            }, 2000);
+
+            return () => clearTimeout(delayedInit);
+        }
+    }, [isInitialized]);
+
+    const setupAuthListener = () => {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+            console.log('Auth state changed:', event, session?.user?.id);
+
+            if (event === 'SIGNED_IN' && session?.user) {
+                console.log('User signed in, reinitializing...');
+                await initializeCard();
+            } else if (event === 'SIGNED_OUT') {
+                console.log('User signed out, clearing state...');
+                setCurrentUser(null);
+                setLiked(false);
+                setIsFavorite(false);
+                setIsInitialized(false);
+            }
+        });
+
+        return () => subscription?.unsubscribe();
+    };
 
     const initializeCard = async () => {
         try {
-            const user = await userService.getCurrentUser();
+            console.log('Initializing NewsCard for article:', news.id);
+
+            // Pobierz użytkownika z retry logic
+            let user = await getUserWithRetry();
+            console.log('Current user after retry:', user?.id);
+
             setCurrentUser(user);
 
             if (user) {
-                // Sprawdź czy już mamy informację o polubienium w props
+                // Sprawdź status polubienia
                 if (news.isLikedByUser !== undefined) {
-                    console.log('NewsCard: Using isLikedByUser from props', news.isLikedByUser);
+                    console.log('Using like status from props:', news.isLikedByUser);
                     setLiked(news.isLikedByUser);
                 } else {
-                    // Sprawdź w bazie tylko jeśli nie ma informacji w props
-                    console.log('NewsCard: Checking like status from database');
-                    const likedResponse = await newsService.checkIfLiked(news.id, user.id);
-                    if (likedResponse.success) {
-                        setLiked(likedResponse.data);
+                    console.log('Checking like status in database...');
+                    const response = await newsService.checkIfLiked(news.id, user.id);
+                    if (response.success) {
+                        console.log('Like status from DB:', response.data);
+                        setLiked(response.data);
                     }
                 }
 
-                // Sprawdź czy artykuł jest w ulubionych - POPRAWIONE
-                console.log('🔍 Checking if article is favorite:', news.id);
+                // Sprawdź ulubione
+                console.log('Checking favorite status...');
                 try {
-                    const isArticleFavorite = await userService.isFavorite(news.id);
-                    console.log('📖 Article favorite status:', isArticleFavorite);
-                    setIsFavorite(isArticleFavorite);
+                    const isFav = await userService.isFavorite(news.id);
+                    console.log('Favorite status:', isFav);
+                    setIsFavorite(isFav);
                 } catch (error) {
                     console.error('Error checking favorite status:', error);
                     setIsFavorite(false);
                 }
             }
+
+            setIsInitialized(true);
+            console.log('NewsCard initialization completed');
+
         } catch (error) {
             console.error('Error initializing card:', error);
+            setIsInitialized(true);
         }
     };
 
-    // TYLKO deleguj do parent - ZERO lokalnej logiki API
+    const getUserWithRetry = async (retries = 3) => {
+        for (let i = 0; i < retries; i++) {
+            try {
+                const user = await userService.getCurrentUser();
+                if (user) {
+                    console.log(`Got user on attempt ${i + 1}:`, user.id);
+                    return user;
+                }
+
+                // Sprawdź sesję Supabase
+                const { data: { session } } = await supabase.auth.getSession();
+                if (session?.user) {
+                    console.log(`Found Supabase session on attempt ${i + 1}`);
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    const retryUser = await userService.getCurrentUser();
+                    if (retryUser) return retryUser;
+                }
+
+                if (i < retries - 1) {
+                    console.log(`User not found, retrying in ${(i + 1) * 1000}ms...`);
+                    await new Promise(resolve => setTimeout(resolve, (i + 1) * 1000));
+                }
+            } catch (error) {
+                console.error(`Error getting user on attempt ${i + 1}:`, error);
+                if (i === retries - 1) throw error;
+            }
+        }
+        return null;
+    };
+
+    // POPRAWIONY handleLike - zawsze działa
     const handleLike = () => {
+        console.log('Like button pressed:', {
+            newsId: news.id,
+            currentUser: currentUser?.id,
+            currentLiked: liked,
+            onLikeExists: !!onLike
+        });
+
+        // Pokaż alert jeśli nie ma użytkownika, ale nie blokuj
         if (!currentUser) {
             Alert.alert('Info', 'Zaloguj się, aby polubić artykuł');
-            return;
         }
 
-        console.log('NewsCard: Delegating to parent - news.id:', news.id, 'current liked:', liked);
-
-        if (onLike) {
+        // ZAWSZE deleguj do parent
+        if (onLike && typeof onLike === 'function') {
+            console.log('Delegating to parent onLike...');
             onLike(news.id, !liked);
+        } else {
+            console.error('onLike is not available:', typeof onLike);
+            Alert.alert('Błąd', 'Funkcja polubienia nie jest dostępna');
         }
     };
 
     const handleComment = async () => {
+        console.log('Comment button pressed for article:', news.id);
+
         if (!news) return;
 
         try {
-            // ZAPISZ DO HISTORII CZYTANIA - NOWY SYSTEM
-            console.log('Marking article as read:', news.id, news.title);
+            // Zapisz do historii czytania
+            console.log('Marking article as read...');
             await readingHistoryService.markAsRead(news.id, 'news');
 
             if (onComment) {
+                console.log('Calling parent onComment...');
                 onComment(news);
             }
         } catch (error) {
             console.error('Error handling comment:', error);
-            // Mimo błędu, pozwól na otwarcie komentarzy
             if (onComment) {
                 onComment(news);
             }
@@ -122,6 +202,8 @@ const NewsCard = ({ news, onPress, onComment, onLike, isLiked = false }) => {
     };
 
     const handleFavorite = async () => {
+        console.log('Favorite button pressed:', { newsId: news.id, currentUser: currentUser?.id });
+
         if (!currentUser) {
             Alert.alert('Info', 'Zaloguj się, aby dodać do ulubionych');
             return;
@@ -129,47 +211,36 @@ const NewsCard = ({ news, onPress, onComment, onLike, isLiked = false }) => {
 
         try {
             if (isFavorite) {
+                console.log('Removing from favorites...');
                 await userService.removeFromFavorites(news.id);
                 setIsFavorite(false);
-                console.log('💔 Removed from favorites:', news.title);
                 Alert.alert('Usunięto', 'Artykuł został usunięty z ulubionych');
             } else {
+                console.log('Adding to favorites...');
                 await userService.addToFavorites(news.id, 'news');
                 setIsFavorite(true);
-                console.log('❤️ Added to favorites:', news.title);
                 Alert.alert('Dodano', 'Artykuł został dodany do ulubionych');
             }
-
-            // Wyemituj event żeby ProfileScreen się odświeżył (jeśli używasz EventEmitter)
-            // Lub po prostu loguj że trzeba odświeżyć statystyki
-            console.log('🔄 Favorites changed - ProfileScreen should refresh stats');
-
         } catch (error) {
             console.error('Error toggling favorite:', error);
             Alert.alert('Błąd', 'Nie udało się zaktualizować ulubionych');
         }
     };
 
-    // W NewsCard.js - zamień stary handlePress na ten:
-
     const handlePress = async () => {
-        console.log('NewsCard handlePress triggered');
-        console.log('🔍 News ID:', news.id);
-        console.log('🔍 News title:', news.title);
+        console.log('Article pressed:', news.id);
 
         try {
-            // Nowa metoda - używa readingHistoryService.markAsRead
-            console.log('Marking article as read:', news.id, news.title);
+            // Zapisz do historii czytania
+            console.log('Marking as read on press...');
             await readingHistoryService.markAsRead(news.id, 'news');
-
-            // Dodaj również do userService (dla lokalnych statystyk)
             await userService.addToReadHistory(news.id, news.title, 'news');
-
         } catch (error) {
-            console.error('Error marking article as read:', error);
+            console.error('Error marking as read:', error);
         }
 
         if (onPress) {
+            console.log('Calling parent onPress...');
             onPress(news);
         }
     };
@@ -220,11 +291,7 @@ const NewsCard = ({ news, onPress, onComment, onLike, isLiked = false }) => {
                     <View style={styles.categoryBadge}>
                         <Text style={styles.categoryText}>{news.category}</Text>
                     </View>
-                    <TouchableOpacity onPress={() => {
-                        console.log('🔖 Bookmark button pressed for article:', news.id);
-                        console.log('🔖 Current favorite status:', isFavorite);
-                        handleFavorite();
-                    }}>
+                    <TouchableOpacity onPress={handleFavorite}>
                         <Ionicons
                             name={isFavorite ? "bookmark" : "bookmark-outline"}
                             size={20}
@@ -254,12 +321,15 @@ const NewsCard = ({ news, onPress, onComment, onLike, isLiked = false }) => {
                 </View>
             </TouchableOpacity>
 
-            {/* Akcje - SEKCJA Z REAKTYWNYM SERDUSZKIEM */}
+            {/* Akcje */}
             <View style={styles.actionButtons}>
                 {/* Przycisk polubienia */}
                 <TouchableOpacity
                     style={[styles.actionButton, liked && styles.actionButtonLiked]}
-                    onPress={handleLike}
+                    onPress={() => {
+                        console.log('Like button physical press detected at:', new Date().toISOString());
+                        handleLike();
+                    }}
                     activeOpacity={0.7}
                 >
                     <Ionicons
@@ -373,7 +443,6 @@ const styles = StyleSheet.create({
         fontSize: 12,
         color: COLORS.gray,
     },
-    // STYLE DLA REAKTYWNYCH AKCJI
     actionButtons: {
         flexDirection: 'row',
         justifyContent: 'space-around',

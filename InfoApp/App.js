@@ -4,6 +4,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
+import { AuthProvider } from './src/context/AuthContext';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import 'react-native-url-polyfill/auto';
 
@@ -49,79 +50,35 @@ const TabIcon = ({ name, focused, color, size }) => {
 
 export default function App() {
   return (
-    <SafeAreaProvider>
-      <NavigationContainer>
-        <StatusBar style="light" backgroundColor={COLORS.primary} />
-        <Tab.Navigator
-          screenOptions={({ route }) => ({
-            tabBarIcon: ({ focused, color, size }) => (
-              <TabIcon
-                name={route.name}
-                focused={focused}
-                color={color}
-                size={size}
-              />
-            ),
-            tabBarActiveTintColor: COLORS.primary,
-            tabBarInactiveTintColor: COLORS.gray,
-            tabBarStyle: {
-              backgroundColor: COLORS.white,
-              borderTopWidth: 1,
-              borderTopColor: COLORS.lightGray,
-              paddingTop: 5,
-              paddingBottom: 5,
-              height: 60,
-            },
-            tabBarLabelStyle: {
-              fontSize: 11, // Zmniejszona czcionka bo mamy więcej zakładek
-              fontWeight: '600',
-              marginBottom: 2,
-            },
-            headerStyle: {
-              backgroundColor: COLORS.primary,
-              elevation: 0,
-              shadowOpacity: 0,
-            },
-            headerTintColor: COLORS.white,
-            headerTitleStyle: {
-              fontWeight: 'bold',
-              fontSize: 18,
-            },
-          })}
-        >
-          <Tab.Screen
-            name="Główna"
-            component={HomeScreen}
-            options={{
-              headerTitle: 'InfoApp',
-            }}
-          />
-          <Tab.Screen
-            name="Newsy"
-            component={NewsScreen}
-            options={{
-              headerTitle: 'Najnowsze Newsy',
-            }}
-          />
-          <Tab.Screen
-            name="Politycy"
-            component={PoliticiansScreen}
-            options={{
-              headerTitle: 'Politycy',
-            }}
-          />
-          <Tab.Screen
-            name="Ustawy"
-            component={LegislationScreen}
-            options={{
-              headerTitle: 'Prace Legislacyjne',
-            }}
-          />
-          <Tab.Screen
-            name="Sejm"
-            component={ParlamentScreen}
-            options={{
-              headerTitle: 'Sejm',
+    <AuthProvider>
+      <SafeAreaProvider>
+        <NavigationContainer>
+          <StatusBar style="light" backgroundColor={COLORS.primary} />
+          <Tab.Navigator
+            screenOptions={({ route }) => ({
+              tabBarIcon: ({ focused, color, size }) => (
+                <TabIcon
+                  name={route.name}
+                  focused={focused}
+                  color={color}
+                  size={size}
+                />
+              ),
+              tabBarActiveTintColor: COLORS.primary,
+              tabBarInactiveTintColor: COLORS.gray,
+              tabBarStyle: {
+                backgroundColor: COLORS.white,
+                borderTopWidth: 1,
+                borderTopColor: COLORS.lightGray,
+                paddingTop: 5,
+                paddingBottom: 5,
+                height: 60,
+              },
+              tabBarLabelStyle: {
+                fontSize: 11, // Zmniejszona czcionka bo mamy więcej zakładek
+                fontWeight: '600',
+                marginBottom: 2,
+              },
               headerStyle: {
                 backgroundColor: COLORS.primary,
                 elevation: 0,
@@ -132,17 +89,63 @@ export default function App() {
                 fontWeight: 'bold',
                 fontSize: 18,
               },
-            }}
-          />
-          <Tab.Screen
-            name="Profil"
-            component={ProfileScreen}
-            options={{
-              headerTitle: 'Mój Profil',
-            }}
-          />
-        </Tab.Navigator>
-      </NavigationContainer>
-    </SafeAreaProvider>
+            })}
+          >
+            <Tab.Screen
+              name="Główna"
+              component={HomeScreen}
+              options={{
+                headerTitle: 'InfoApp',
+              }}
+            />
+            <Tab.Screen
+              name="Newsy"
+              component={NewsScreen}
+              options={{
+                headerTitle: 'Najnowsze Newsy',
+              }}
+            />
+            <Tab.Screen
+              name="Politycy"
+              component={PoliticiansScreen}
+              options={{
+                headerTitle: 'Politycy',
+              }}
+            />
+            <Tab.Screen
+              name="Ustawy"
+              component={LegislationScreen}
+              options={{
+                headerTitle: 'Prace Legislacyjne',
+              }}
+            />
+            <Tab.Screen
+              name="Sejm"
+              component={ParlamentScreen}
+              options={{
+                headerTitle: 'Sejm',
+                headerStyle: {
+                  backgroundColor: COLORS.primary,
+                  elevation: 0,
+                  shadowOpacity: 0,
+                },
+                headerTintColor: COLORS.white,
+                headerTitleStyle: {
+                  fontWeight: 'bold',
+                  fontSize: 18,
+                },
+              }}
+            />
+            <Tab.Screen
+              name="Profil"
+              component={ProfileScreen}
+              options={{
+                headerTitle: 'Mój Profil',
+              }}
+            />
+          </Tab.Navigator>
+        </NavigationContainer>
+      </SafeAreaProvider>
+    </AuthProvider>
   );
 }

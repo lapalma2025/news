@@ -1,4 +1,6 @@
 // src/screens/NewsScreen.js - KOMPLETNIE POPRAWIONY Z OBSŁUGĄ KOMENTARZY
+import { eventBus, EVENTS } from '../utils/eventBus';
+import { useFocusEffect } from '@react-navigation/native';
 import React, { useState, useEffect } from 'react';
 import { AppState } from 'react-native';
 import {
@@ -46,6 +48,72 @@ const NewsScreen = () => {
     const [selectedItem, setSelectedItem] = useState(null);
     const [newsSubscription, setNewsSubscription] = useState(null);
 
+
+    useEffect(() => {
+        console.log("NewsScreen: setting up eventBus listener...");
+
+        const sub = eventBus.on(EVENTS.NEWS_UPDATED, (data) => {
+            console.log("NewsScreen: Received NEWS_UPDATED event:", data);
+
+            // aktualizacja listy newsów
+            setNews(prev =>
+                prev.map(item =>
+                    item.id === data.newsId
+                        ? {
+                            ...item,
+                            likes_count: data.likes_count ?? item.likes_count,
+                            comments_count: data.comments_count ?? item.comments_count,
+                            isLikedByUser: data.isLikedByUser ?? item.isLikedByUser
+                        }
+                        : item
+                )
+            );
+
+            // aktualizacja otwartego modala (jeśli dotyczy)
+            setSelectedItem(prev =>
+                prev?.id === data.newsId
+                    ? {
+                        ...prev,
+                        likes_count: data.likes_count ?? prev.likes_count,
+                        comments_count: data.comments_count ?? prev.comments_count,
+                        isLikedByUser: data.isLikedByUser ?? prev.isLikedByUser
+                    }
+                    : prev
+            );
+        });
+
+        return () => {
+            sub.remove();
+        };
+    }, []);
+
+    useFocusEffect(
+        React.useCallback(() => {
+            loadNews();
+        }, [])
+    );
+
+    useEffect(() => {
+        return () => {
+            if (newsSubscription) {
+                newsService.unsubscribeFromNews(newsSubscription);
+            }
+        };
+    }, [newsSubscription]);
+
+    // W NewsScreen.js
+    useEffect(() => {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+            if (event === 'SIGNED_IN') {
+                console.log('NewsScreen: User logged in, refreshing news data...');
+                setTimeout(() => {
+                    loadNews();
+                }, 500);
+            }
+        });
+
+        return () => subscription?.unsubscribe();
+    }, []);
     // Odświeżanie danych po powrocie do aplikacji
     useEffect(() => {
         const handleAppStateChange = (nextAppState) => {
@@ -59,15 +127,6 @@ const NewsScreen = () => {
 
         return () => {
             subscription?.remove();
-        };
-    }, []);
-
-    useEffect(() => {
-        loadNews();
-        return () => {
-            if (newsSubscription) {
-                newsService.unsubscribeFromNews(newsSubscription);
-            }
         };
     }, []);
 
@@ -166,12 +225,6 @@ const NewsScreen = () => {
                 return;
             }
 
-            console.log('📝 BEFORE - currentNews:', {
-                id: currentNews.id,
-                likes: currentNews.likes_count,
-                isLiked: currentNews.isLikedByUser
-            });
-
             const currentIsLiked = currentNews.isLikedByUser || false;
 
             const response = await newsService.toggleLike(newsId, user.id, currentIsLiked);
@@ -187,33 +240,21 @@ const NewsScreen = () => {
 
                 if (!error && freshData) {
                     console.log('📊 Fresh likes count from DB:', freshData.likes_count);
-                    console.log('📊 Updating item with ID:', newsId);
 
-                    setNews(prev => {
-                        const updated = prev.map(item => {
-                            if (item.id === newsId) {
-                                console.log('📊 FOUND ITEM TO UPDATE:', item.id);
-                                return {
-                                    ...item,
-                                    likes_count: freshData.likes_count,
-                                    isLikedByUser: shouldLike
-                                };
-                            }
-                            return item;
-                        });
-
-                        // Sprawdź czy rzeczywiście znalazł item
-                        const updatedItem = updated.find(item => item.id === newsId);
-                        console.log('📊 AFTER UPDATE - item:', {
-                            id: updatedItem?.id,
-                            likes: updatedItem?.likes_count,
-                            isLiked: updatedItem?.isLikedByUser
-                        });
-
-                        return updated;
+                    // 🔑 dopiero teraz emitujesz event
+                    eventBus.emit(EVENTS.NEWS_UPDATED, {
+                        newsId,
+                        likes_count: freshData.likes_count,
+                        isLikedByUser: shouldLike
                     });
 
-                    console.log('📊 UI updated with fresh data');
+                    setNews(prev =>
+                        prev.map(item =>
+                            item.id === newsId
+                                ? { ...item, likes_count: freshData.likes_count, isLikedByUser: shouldLike }
+                                : item
+                        )
+                    );
                 } else {
                     console.error('📊 Error fetching fresh data:', error);
                 }
@@ -222,9 +263,10 @@ const NewsScreen = () => {
             }
         } catch (error) {
             console.error('NewsScreen: Error updating like:', error);
-            Alert.alert('Błąd', 'Wystąpił problem z polubienieм');
+            Alert.alert('Błąd', 'Wystąpił problem z polubieniem');
         }
     };
+
 
     // ❓ SPRAWDŹ CZY MASZ ten kod w swoim NewsScreen.js?
     // Jeśli nie ma tej części z pobieraniem fresh data, to dlatego UI się nie aktualizuje!
@@ -266,6 +308,10 @@ const NewsScreen = () => {
 
     const handleCommentUpdate = (postId, newCommentsCount) => {
         console.log('💬 NewsScreen: Received comment update:', postId, newCommentsCount);
+        console.log('💬 NewsScreen: handleCommentUpdate called');
+        console.log('💬 postId:', postId);
+        console.log('💬 newCommentsCount:', newCommentsCount);
+        console.log('💬 Current news array length:', news.length);
 
         // Aktualizuj stan news
         setNews(prevNews => {
@@ -286,6 +332,10 @@ const NewsScreen = () => {
                 comments_count: newCommentsCount
             }));
         }
+        eventBus.emit(EVENTS.NEWS_UPDATED, {
+            newsId: postId,
+            comments_count: newCommentsCount
+        });
     };
 
     const closeModal = async () => {
@@ -516,7 +566,7 @@ const NewsScreen = () => {
             />
 
             {loading && (
-                <View style={styles.loadingOverlay}>
+                <View style={styles.loadingOverlay} pointerEvents="none">
                     <Text style={styles.loadingText}>Ładowanie newsów...</Text>
                 </View>
             )}

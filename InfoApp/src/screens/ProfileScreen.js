@@ -6,11 +6,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from '@react-navigation/native'; // DODANE
 import { COLORS } from '../styles/colors';
+import * as Google from 'expo-auth-session/providers/google';
 import { APP_CONFIG } from '../utils/constants';
 import { userService } from '../services/userService';
 import { readingHistoryService } from '../services/readingHistoryService'; // DODANE
 import { supabase } from '../services/supabaseClient'; // DODANE dla sprawdzania ulubionych
-
 import NotificationSettingsScreen from './profile/NotificationSettingsScreen';
 import FavoriteArticlesScreen from './profile/FavoriteArticlesScreen';
 import ReadingHistoryScreen from './profile/ReadingHistoryScreen';
@@ -30,30 +30,139 @@ const ProfileScreen = () => {
     });
     const [loading, setLoading] = useState(true);
     const [activeScreen, setActiveScreen] = useState('main');
+    const [signingIn, setSigningIn] = useState(false);
+
+    const [request, response, promptAsync] = Google.useAuthRequest({
+        clientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+        scopes: ['profile', 'email'],
+        redirectUri: 'https://ggtljdtdlhbdupjuednj.supabase.co/auth/v1/callback',
+    });
 
     // Załaduj dane gdy ekran się focusuje (wraca z innych ekranów)
     useFocusEffect(
         React.useCallback(() => {
             if (activeScreen === 'main') {
-                loadUserData();
-                loadRealStats(); // DODANE
+                checkUser();
+                loadRealStats();
             }
         }, [activeScreen])
     );
 
     useEffect(() => {
-        loadUserData();
-        loadRealStats(); // DODANE
-    }, []);
+        if (response?.type === 'success') {
+            const { authentication } = response;
+            handleGoogleSignIn(authentication);
+        }
+    }, [response]);
 
-    const loadUserData = async () => {
+    const checkUser = async () => {
         try {
-            const userData = await userService.getCurrentUser();
-            setUser(userData);
+            const { data: { session } } = await supabase.auth.getSession();
+
+            if (session?.user) {
+                setUser({
+                    id: session.user.id,
+                    email: session.user.email,
+                    displayName: session.user.user_metadata.full_name || session.user.email,
+                    photoURL: session.user.user_metadata.avatar_url,
+                    isAnonymous: false,
+                    createdAt: session.user.created_at,
+                    provider: session.user.app_metadata.provider,
+                    stats: await getUserStats(session.user.id)
+                });
+            } else {
+                // Użytkownik anonimowy
+                setUser({
+                    isAnonymous: true,
+                    displayName: 'Anonim',
+                    stats: { readArticles: 0, favoriteArticles: [], comments: 0, likedPosts: 0 }
+                });
+            }
         } catch (error) {
-            console.error('Error loading user data:', error);
+            console.error('Error checking user:', error);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const getUserStats = async (userId) => {
+        try {
+            const [commentsResult, ratingsResult] = await Promise.all([
+                supabase
+                    .from('infoapp_comments')
+                    .select('id')
+                    .eq('user_id', userId)
+                    .eq('is_active', true),
+                supabase
+                    .from('app_ratings')
+                    .select('id')
+                    .eq('user_id', userId)
+            ]);
+
+            return {
+                readArticles: 0,
+                favoriteArticles: [],
+                comments: commentsResult.data?.length || 0,
+                likedPosts: 0,
+                ratings: ratingsResult.data?.length || 0
+            };
+        } catch (error) {
+            console.error('Error getting user stats:', error);
+            return { readArticles: 0, favoriteArticles: [], comments: 0, likedPosts: 0 };
+        }
+    };
+
+    const handleGoogleSignIn = async (authentication) => {
+        if (!authentication?.accessToken) return;
+
+        setSigningIn(true);
+
+        try {
+            const userInfoResponse = await fetch('https://www.googleapis.com/userinfo/v2/me', {
+                headers: { Authorization: `Bearer ${authentication.accessToken}` },
+            });
+
+            const userInfo = await userInfoResponse.json();
+
+            const { data, error } = await supabase.auth.signInWithIdToken({
+                provider: 'google',
+                token: authentication.idToken,
+                access_token: authentication.accessToken,
+            });
+
+            if (error) throw error;
+
+            const { error: updateError } = await supabase.auth.updateUser({
+                data: {
+                    full_name: userInfo.name,
+                    avatar_url: userInfo.picture,
+                    email: userInfo.email,
+                }
+            });
+
+            if (updateError) console.warn('Update user metadata error:', updateError);
+
+            Alert.alert('Sukces', 'Pomyślnie zalogowano przez Google!');
+            checkUser();
+
+        } catch (error) {
+            console.error('Google sign in error:', error);
+            Alert.alert('Błąd', 'Nie udało się zalogować przez Google. Spróbuj ponownie.');
+        } finally {
+            setSigningIn(false);
+        }
+    };
+
+    const handleSignOut = async () => {
+        try {
+            const { error } = await supabase.auth.signOut();
+            if (error) throw error;
+
+            Alert.alert('Wylogowano', 'Pomyślnie wylogowano z konta.');
+            checkUser();
+        } catch (error) {
+            console.error('Sign out error:', error);
+            Alert.alert('Błąd', 'Nie udało się wylogować.');
         }
     };
 
@@ -193,16 +302,69 @@ const ProfileScreen = () => {
         setActiveScreen('RateApp');
     };
 
-    const handleLogin = () => {
-        Alert.alert(
-            'Logowanie',
-            'Funkcja logowania będzie dostępna wkrótce!\n\n✨ Korzyści z logowania:\n• Synchronizacja danych między urządzeniami\n• Backup ulubionych artykułów\n• Personalizowane rekomendacje\n• Możliwość obserwowania polityków',
-            [
-                { text: 'OK', style: 'default' },
-                { text: 'Powiadom mnie', onPress: () => Alert.alert('Super!', 'Powiadomimy Cię gdy funkcja będzie gotowa!') }
-            ]
-        );
+    const handleLogin = async () => {
+        if (user?.isAnonymous) {
+            try {
+                setSigningIn(true);
+
+                const { error } = await supabase.auth.signInWithOAuth({
+                    provider: 'google',
+                    options: {
+                        redirectTo: `${window.location.origin}/`,
+                        queryParams: {
+                            access_type: 'offline',
+                            prompt: 'consent',
+                        }
+                    }
+                });
+
+                if (error) throw error;
+
+            } catch (error) {
+                console.error('Google sign in error:', error);
+                Alert.alert('Błąd', 'Nie udało się zalogować przez Google');
+            } finally {
+                setSigningIn(false);
+            }
+        } else {
+            Alert.alert(
+                'Zarządzanie kontem',
+                'Co chcesz zrobić?',
+                [
+                    { text: 'Anuluj', style: 'cancel' },
+                    { text: 'Wyloguj się', onPress: handleSignOut, style: 'destructive' },
+                ]
+            );
+        }
     };
+
+    useEffect(() => {
+        checkUser();
+
+        // Nasłuchuj zmian autentykacji
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+            console.log('Auth state changed:', event, session?.user?.email);
+            if (event === 'SIGNED_IN') {
+                Alert.alert('Sukces', 'Pomyślnie zalogowano!');
+                checkUser();
+                window.dispatchEvent(new CustomEvent('userLoggedIn'));
+
+                // DODAJ TO - wymuś odświeżenie innych ekranów
+                setTimeout(() => {
+                    // Reset navigation lub wymuszenie re-render
+                    if (navigation?.reset) {
+                        navigation.reset({
+                            index: 0,
+                            routes: [{ name: 'ProfileTab' }]
+                        });
+                    }
+                }, 1000);
+            }
+            checkUser();
+        });
+
+        return () => subscription?.unsubscribe();
+    }, []);
 
     const handleDataManagement = () => {
         Alert.alert(
@@ -235,6 +397,16 @@ const ProfileScreen = () => {
                 { text: 'Resetuj', style: 'destructive', onPress: resetUserData }
             ]
         );
+    };
+
+    const loadUserData = async () => {
+        try {
+            await loadRealStats();
+        } catch (error) {
+            console.error('Error loading user data:', error);
+        } finally {
+            setLoading(false);
+        }
     };
 
     const resetUserData = async () => {
@@ -357,24 +529,46 @@ const ProfileScreen = () => {
                     style={styles.header}
                 >
                     <View style={styles.profileInfo}>
-                        <View style={styles.avatar}>
-                            <Ionicons name="person" size={40} color={COLORS.white} />
-                        </View>
                         <Text style={styles.userName}>{user?.displayName || 'Anonim'}</Text>
                         <Text style={styles.userEmail}>
                             {user?.isAnonymous ? 'Korzystasz bez logowania' : user?.email || 'Brak adresu email'}
                         </Text>
-
+                        {user?.provider && (
+                            <Text style={styles.providerInfo}>
+                                Zalogowano przez: {user.provider === 'google' ? 'Google' : user.provider}
+                            </Text>
+                        )}
                         <TouchableOpacity
-                            style={styles.loginButton}
+                            style={[styles.loginButton, signingIn && styles.loginButtonDisabled]}
                             onPress={handleLogin}
                             activeOpacity={0.8}
+                            disabled={signingIn}
                         >
-                            <Ionicons name="log-in-outline" size={18} color={COLORS.white} style={{ marginRight: 8 }} />
-                            <Text style={styles.loginButtonText}>
-                                {user?.isAnonymous ? 'Zaloguj się' : 'Zarządzaj kontem'}
-                            </Text>
+                            {signingIn ? (
+                                <ActivityIndicator size="small" color={COLORS.white} />
+                            ) : (
+                                <>
+                                    <Ionicons
+                                        name={user?.isAnonymous ? "logo-google" : "settings-outline"}
+                                        size={18}
+                                        color={COLORS.white}
+                                        style={{ marginRight: 8 }}
+                                    />
+                                    <Text style={styles.loginButtonText}>
+                                        {user?.isAnonymous ? 'Zaloguj się przez Google' : 'Zarządzaj kontem'}
+                                    </Text>
+                                </>
+                            )}
                         </TouchableOpacity>
+                        {/* TYMCZASOWY PRZYCISK DEBUG */}
+                        {!user?.isAnonymous && (
+                            <TouchableOpacity
+                                style={[styles.loginButton, { backgroundColor: 'red', marginTop: 10 }]}
+                                onPress={handleSignOut}
+                            >
+                                <Text style={styles.loginButtonText}>WYLOGUJ SIĘ (DEBUG)</Text>
+                            </TouchableOpacity>
+                        )}
                     </View>
                 </LinearGradient>
 
@@ -539,6 +733,19 @@ const styles = StyleSheet.create({
         paddingVertical: 40,
         paddingHorizontal: 20,
         alignItems: 'center',
+    },
+    avatarImage: {
+        width: '100%',
+        height: '100%',
+        borderRadius: 40,
+    },
+    providerInfo: {
+        fontSize: 14,
+        color: 'rgba(255,255,255,0.7)',
+        marginBottom: 16,
+    },
+    loginButtonDisabled: {
+        opacity: 0.5,
     },
     profileInfo: {
         alignItems: 'center',
