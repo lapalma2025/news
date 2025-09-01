@@ -56,7 +56,7 @@ const HelpSupportScreen = () => {
         },
         {
             icon: "globe",
-            title: "Strona internetowa",
+            title: "Strona",
             description: "Odwiedź nasze FAQ online",
             action: () => Linking.openURL(APP_CONFIG.WEBSITE)
         },

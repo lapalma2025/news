@@ -704,7 +704,7 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded, onLikeUpdate }) 
 
                     {/* Input do dodawania komentarzy */}
                     <View style={styles.inputContainer}>
-                        {currentUser ? (
+                        {currentUser && !currentUser.isAnonymous ? (
                             <>
                                 {showNameInput && (
                                     <View style={styles.nameInputContainer}>
