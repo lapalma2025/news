@@ -52,7 +52,7 @@ const AboutAppScreen = () => {
     );
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
             <ScrollView style={styles.scrollView}>
                 {/* App Logo & Info */}
                 <View style={styles.appHeader}>
@@ -193,10 +193,10 @@ const AboutAppScreen = () => {
                 {/* Credits */}
                 <View style={styles.creditsSection}>
                     <Text style={styles.creditsText}>
-                        © 2024 InfoApp. Wszystkie prawa zastrzeżone.
+                        © 2025 Wiem. Wszystkie prawa zastrzeżone.
                     </Text>
                     <Text style={styles.creditsSubtext}>
-                        Stworzone z ❤️ dla polskich obywateli
+                        Stworzone dla polskich obywateli
                     </Text>
                 </View>
             </ScrollView>

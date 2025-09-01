@@ -87,7 +87,7 @@ const HelpSupportScreen = () => {
     };
 
     return (
-        <SafeAreaView style={helpStyles.container}>
+        <SafeAreaView style={helpStyles.container} edges={['top', 'left', 'right']}>
             <ScrollView style={helpStyles.scrollView}>
                 {/* Quick Contact */}
                 <View style={helpStyles.section}>

@@ -49,7 +49,7 @@ const AddNewsModal = ({ visible, onClose, onSuccess }) => {
 
     return (
         <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
-            <SafeAreaView style={styles.container}>
+            <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
                 <View style={styles.header}>
                     <Button
                         title="Anuluj"

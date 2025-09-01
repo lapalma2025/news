@@ -62,13 +62,13 @@ export const TIMEOUTS = {
 };
 
 export const APP_CONFIG = {
-    NAME: 'InfoApp',
+    NAME: 'Wiem',
     VERSION: '1.0.0',
     DESCRIPTION: 'Najnowsze newsy, komunikaty polityków i budżet państwa',
-    WEBSITE: 'https://infoapp.pl',
-    SUPPORT_EMAIL: 'pomoc@infoapp.pl',
-    PRIVACY_URL: 'https://infoapp.pl/privacy',
-    TERMS_URL: 'https://infoapp.pl/terms',
+    WEBSITE: 'https://wiem.app',
+    SUPPORT_EMAIL: 'pomoc@wiem.pl',
+    PRIVACY_URL: 'https://wiem.pl/privacy',
+    TERMS_URL: 'https://wiem.pl/terms',
 };
 
 // Social media

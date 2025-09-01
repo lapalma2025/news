@@ -437,7 +437,7 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded, onLikeUpdate }) 
                 post_type: postType,
                 author_name: userName.trim(),
                 content: comment.trim(),
-                user_id: currentUser.id
+                user_id: currentUser.id || null
             });
 
             if (commentResponse.success) {
@@ -534,7 +534,7 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded, onLikeUpdate }) 
             presentationStyle="pageSheet"
             onRequestClose={onClose}
         >
-            <SafeAreaView style={styles.container}>
+            <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
                 <KeyboardAvoidingView
                     style={styles.keyboardView}
                     behavior={Platform.OS === 'ios' ? 'padding' : 'height'}

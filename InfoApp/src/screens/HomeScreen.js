@@ -359,7 +359,7 @@ const HomeScreen = () => {
 
     if (loading) {
         return (
-            <SafeAreaView style={styles.container}>
+            <SafeAreaView style={styles.container} edges={['bottom']}>
                 <View style={styles.loadingContainer}>
                     <Text style={styles.loadingText}>Ładowanie...</Text>
                 </View>
@@ -368,13 +368,15 @@ const HomeScreen = () => {
     }
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
             <ScrollView
                 style={styles.scrollView}
+                contentInsetAdjustmentBehavior="never"
                 refreshControl={
                     <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
                 }
             >
+                {/* Header z wyszukiwaniem */}
                 {/* Header z wyszukiwaniem */}
                 <LinearGradient
                     colors={[COLORS.gradientStart, COLORS.gradientEnd]}
@@ -382,6 +384,20 @@ const HomeScreen = () => {
                 >
                     <Text style={styles.welcomeText}>Witaj w InfoApp</Text>
                     <Text style={styles.subtitleText}>Bądź na bieżąco z najważniejszymi wydarzeniami</Text>
+
+                    {/* DODAJ TO - Badges z liczbami */}
+                    <View style={styles.headerBadges}>
+                        <View style={styles.headerBadge}>
+                            <Ionicons name="newspaper" size={16} color={COLORS.white} />
+                            <Text style={styles.headerBadgeText}>{news.length} newsów</Text>
+                        </View>
+                        <View style={styles.headerBadge}>
+                            <Ionicons name="people" size={16} color={COLORS.white} />
+                            <Text style={styles.headerBadgeText}>
+                                {politicianPosts.length} {politicianPosts.length < 10 ? 'wpisy polityków' : 'wpisów polityków'}
+                            </Text>
+                        </View>
+                    </View>
 
                     <View style={styles.searchContainer}>
                         <TextInput
@@ -397,7 +413,6 @@ const HomeScreen = () => {
                         </TouchableOpacity>
                     </View>
                 </LinearGradient>
-
                 {/* Sekcja najnowszych newsów */}
                 <View style={styles.section}>
                     <View style={styles.sectionHeader}>
@@ -450,26 +465,6 @@ const HomeScreen = () => {
                             <Text style={styles.emptyStateText}>Brak wpisów polityków</Text>
                         </View>
                     )}
-                </View>
-
-                {/* Statystyki */}
-                <View style={styles.statsSection}>
-                    <LinearGradient
-                        colors={[COLORS.primary, COLORS.secondary]}
-                        style={styles.statsCard}
-                    >
-                        <Text style={styles.statsTitle}>Dzisiaj w InfoApp</Text>
-                        <View style={styles.statsRow}>
-                            <View style={styles.statItem}>
-                                <Text style={styles.statNumber}>{news.length}</Text>
-                                <Text style={styles.statLabel}>Nowych newsów</Text>
-                            </View>
-                            <View style={styles.statItem}>
-                                <Text style={styles.statNumber}>{politicianPosts.length}</Text>
-                                <Text style={styles.statLabel}>Wpisów polityków</Text>
-                            </View>
-                        </View>
-                    </LinearGradient>
                 </View>
             </ScrollView>
 
@@ -537,6 +532,28 @@ const styles = StyleSheet.create({
         borderRadius: 20,
         padding: 8,
         marginLeft: 10,
+    },
+    headerBadges: {
+        flexDirection: 'row',
+        justifyContent: 'center',
+        marginBottom: 20,
+        gap: 12,
+    },
+    headerBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(255, 255, 255, 0.2)',
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.3)',
+    },
+    headerBadgeText: {
+        color: COLORS.white,
+        fontSize: 12,
+        fontWeight: '600',
+        marginLeft: 6,
     },
     section: {
         paddingHorizontal: 20,

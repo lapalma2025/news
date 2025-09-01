@@ -1,4 +1,4 @@
-// src/components/news/NewsCard.js - KOMPLETNIE POPRAWIONY
+// src/components/news/NewsCard.js - KOMPLETNIE POPRAWIONY z kolorowymi kategoriami
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../services/supabaseClient';
 import {
@@ -9,6 +9,7 @@ import {
     Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 
 import { COLORS } from '../../styles/colors';
 import { newsService } from '../../services/newsService';
@@ -155,6 +156,92 @@ const NewsCard = ({ news, onPress, onComment, onLike, isLiked = false }) => {
         return null;
     };
 
+    // Funkcja do pobierania koloru kategorii
+    const getCategoryColor = (category) => {
+        if (!category) return COLORS.gray;
+
+        // Normalizuj nazwę kategorii do małych liter i usuń polskie znaki
+        const normalizeCategory = (cat) => {
+            return cat.toLowerCase()
+                .replace('ą', 'a')
+                .replace('ć', 'c')
+                .replace('ę', 'e')
+                .replace('ł', 'l')
+                .replace('ń', 'n')
+                .replace('ó', 'o')
+                .replace('ś', 's')
+                .replace('ź', 'z')
+                .replace('ż', 'z')
+                .trim();
+        };
+
+        const normalizedCategory = normalizeCategory(category);
+
+        // Mapowanie kategorii do kolorów
+        const categoryColors = {
+            'polityka': '#ef4444',        // Czerwony
+            'ekonomia': '#10b981',        // Zielony
+            'gospodarka': '#10b981',      // Zielony (alias)
+            'technologia': '#3b82f6',     // Niebieski
+            'tech': '#3b82f6',            // Niebieski (alias)
+            'spoleczenstwo': '#f59e0b',   // Pomarańczowy
+            'spoleczne': '#f59e0b',       // Pomarańczowy (alias)
+            'kultura': '#8b5cf6',         // Fioletowy
+            'sport': '#06b6d4',           // Cyjan
+            'sporty': '#06b6d4',          // Cyjan (alias)
+            'zdrowie': '#ec4899',         // Różowy
+            'nauka': '#14b8a6',           // Teal
+            'swiat': '#f97316',           // Pomarańczowy ciemny
+            'biznes': '#059669',          // Emerald
+            'rozrywka': '#d946ef',        // Fuchsia
+            'edukacja': '#7c3aed',        // Violet
+            'lokalne': '#84cc16',         // Lime
+            'inne': '#6b7280'             // Szary
+        };
+
+        return categoryColors[normalizedCategory] || categoryColors['inne'];
+    };
+
+    // Funkcja do pobierania ikony kategorii
+    const getCategoryIcon = (category) => {
+        if (!category) return 'document-text-outline';
+
+        const normalizedCategory = category.toLowerCase()
+            .replace('ą', 'a')
+            .replace('ć', 'c')
+            .replace('ę', 'e')
+            .replace('ł', 'l')
+            .replace('ń', 'n')
+            .replace('ó', 'o')
+            .replace('ś', 's')
+            .replace('ź', 'z')
+            .replace('ż', 'z')
+            .trim();
+
+        const categoryIcons = {
+            'polityka': 'flag-outline',
+            'ekonomia': 'trending-up-outline',
+            'gospodarka': 'bar-chart-outline',
+            'technologia': 'phone-portrait-outline',
+            'tech': 'laptop-outline',
+            'spoleczenstwo': 'people-outline',
+            'spoleczne': 'heart-outline',
+            'kultura': 'library-outline',
+            'sport': 'fitness-outline',
+            'sporty': 'football-outline',
+            'zdrowie': 'medical-outline',
+            'nauka': 'school-outline',
+            'swiat': 'globe-outline',
+            'biznes': 'briefcase-outline',
+            'rozrywka': 'musical-notes-outline',
+            'edukacja': 'book-outline',
+            'lokalne': 'location-outline',
+            'inne': 'ellipsis-horizontal-outline'
+        };
+
+        return categoryIcons[normalizedCategory] || categoryIcons['inne'];
+    };
+
     // POPRAWIONY handleLike - zawsze działa
     const handleLike = () => {
         console.log('Like button pressed:', {
@@ -283,199 +370,248 @@ const NewsCard = ({ news, onPress, onComment, onLike, isLiked = false }) => {
         return content.substring(0, maxLength) + '...';
     };
 
+    const categoryColor = getCategoryColor(news.category);
+
     return (
         <View style={styles.container}>
-            <TouchableOpacity onPress={handlePress} activeOpacity={0.9}>
-                {/* Header z kategorią */}
-                <View style={styles.header}>
-                    <View style={styles.categoryBadge}>
-                        <Text style={styles.categoryText}>{news.category}</Text>
+            <LinearGradient
+                colors={['#ffffff', '#f8fafc']}
+                style={styles.cardGradient}
+            >
+                <TouchableOpacity onPress={handlePress} activeOpacity={0.9}>
+                    {/* Header z kategorią */}
+                    <View style={styles.header}>
+                        <View style={[styles.categoryBadge, { backgroundColor: categoryColor }]}>
+                            <Ionicons
+                                name={getCategoryIcon(news.category)}
+                                size={14}
+                                color={COLORS.white}
+                                style={styles.categoryIcon}
+                            />
+                            <Text style={styles.categoryText}>{news.category}</Text>
+                        </View>
+                        <View style={styles.headerRight}>
+                            <Text style={styles.time}>
+                                {formatTime(news.created_at)}
+                            </Text>
+                            <TouchableOpacity onPress={handleFavorite} style={styles.favoriteButton}>
+                                <Ionicons
+                                    name={isFavorite ? "bookmark" : "bookmark-outline"}
+                                    size={22}
+                                    color={isFavorite ? categoryColor : COLORS.gray}
+                                />
+                            </TouchableOpacity>
+                        </View>
                     </View>
-                    <TouchableOpacity onPress={handleFavorite}>
+
+                    {/* Tytuł */}
+                    <Text style={styles.title}>{news.title}</Text>
+
+                    {/* Treść */}
+                    <Text style={styles.content}>
+                        {truncateContent(news.content)}
+                    </Text>
+
+                    {/* Meta informacje */}
+                    <View style={styles.meta}>
+                        <View style={styles.authorContainer}>
+                            <Ionicons name="person-circle-outline" size={16} color={COLORS.gray} />
+                            <Text style={styles.author}>{news.author}</Text>
+                        </View>
+                    </View>
+                </TouchableOpacity>
+
+                {/* Akcje */}
+                <View style={styles.actionButtons}>
+                    {/* Przycisk polubienia */}
+                    <TouchableOpacity
+                        style={[
+                            styles.actionButton,
+                            liked && { backgroundColor: COLORS.like + '15' }
+                        ]}
+                        onPress={() => {
+                            console.log('Like button physical press detected at:', new Date().toISOString());
+                            handleLike();
+                        }}
+                        activeOpacity={0.7}
+                    >
                         <Ionicons
-                            name={isFavorite ? "bookmark" : "bookmark-outline"}
-                            size={20}
-                            color={isFavorite ? COLORS.primary : COLORS.gray}
+                            name={liked ? "heart" : "heart-outline"}
+                            size={18}
+                            color={liked ? COLORS.like : COLORS.gray}
                         />
+                        <Text style={[
+                            styles.actionText,
+                            liked && { color: COLORS.like }
+                        ]}>
+                            {likesCount || 0}
+                        </Text>
+                    </TouchableOpacity>
+
+                    {/* Przycisk komentarza */}
+                    <TouchableOpacity
+                        style={styles.actionButton}
+                        onPress={handleComment}
+                        activeOpacity={0.7}
+                    >
+                        <Ionicons
+                            name="chatbubble-outline"
+                            size={18}
+                            color={COLORS.comment}
+                        />
+                        <Text style={[styles.actionText, { color: COLORS.comment }]}>
+                            {commentsCount || 0}
+                        </Text>
+                    </TouchableOpacity>
+
+                    {/* Przycisk udostępniania */}
+                    <TouchableOpacity
+                        style={styles.actionButton}
+                        onPress={handleShare}
+                        activeOpacity={0.7}
+                    >
+                        <Ionicons
+                            name="share-outline"
+                            size={18}
+                            color={COLORS.share}
+                        />
+                        <Text style={[styles.actionText, { color: COLORS.share }]}>
+                            Udostępnij
+                        </Text>
                     </TouchableOpacity>
                 </View>
-
-                {/* Tytuł */}
-                <Text style={styles.title}>{news.title}</Text>
-
-                {/* Treść */}
-                <Text style={styles.content}>
-                    {truncateContent(news.content)}
-                </Text>
-
-                {/* Meta informacje */}
-                <View style={styles.meta}>
-                    <Text style={styles.author}>
-                        <Ionicons name="person-outline" size={14} color={COLORS.gray} />
-                        {' '}{news.author}
-                    </Text>
-                    <Text style={styles.time}>
-                        <Ionicons name="time-outline" size={14} color={COLORS.gray} />
-                        {' '}{formatTime(news.created_at)}
-                    </Text>
-                </View>
-            </TouchableOpacity>
-
-            {/* Akcje */}
-            <View style={styles.actionButtons}>
-                {/* Przycisk polubienia */}
-                <TouchableOpacity
-                    style={[styles.actionButton, liked && styles.actionButtonLiked]}
-                    onPress={() => {
-                        console.log('Like button physical press detected at:', new Date().toISOString());
-                        handleLike();
-                    }}
-                    activeOpacity={0.7}
-                >
-                    <Ionicons
-                        name={liked ? "heart" : "heart-outline"}
-                        size={18}
-                        color={liked ? COLORS.white : COLORS.gray}
-                    />
-                    <Text style={[
-                        styles.actionText,
-                        liked && styles.actionTextLiked
-                    ]}>
-                        {likesCount || 0}
-                    </Text>
-                </TouchableOpacity>
-
-                {/* Przycisk komentarza */}
-                <TouchableOpacity
-                    style={styles.actionButton}
-                    onPress={handleComment}
-                    activeOpacity={0.7}
-                >
-                    <Ionicons
-                        name="chatbubble-outline"
-                        size={18}
-                        color={COLORS.gray}
-                    />
-                    <Text style={styles.actionText}>
-                        {commentsCount || 0}
-                    </Text>
-                </TouchableOpacity>
-
-                {/* Przycisk udostępniania */}
-                <TouchableOpacity
-                    style={styles.actionButton}
-                    onPress={handleShare}
-                    activeOpacity={0.7}
-                >
-                    <Ionicons
-                        name="share-outline"
-                        size={18}
-                        color={COLORS.gray}
-                    />
-                    <Text style={styles.actionText}>Udostępnij</Text>
-                </TouchableOpacity>
-            </View>
+            </LinearGradient>
         </View>
     );
 };
 
 const styles = StyleSheet.create({
     container: {
-        backgroundColor: COLORS.white,
-        borderRadius: 16,
         marginBottom: 16,
+    },
+    cardGradient: {
+        borderRadius: 20,
+        shadowColor: COLORS.black,
+        shadowOffset: {
+            width: 0,
+            height: 4,
+        },
+        shadowOpacity: 0.12,
+        shadowRadius: 12,
+        elevation: 6,
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: COLORS.border,
+    },
+    header: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: 20,
+        paddingBottom: 12,
+    },
+    categoryBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 20,
         shadowColor: COLORS.black,
         shadowOffset: {
             width: 0,
             height: 2,
         },
         shadowOpacity: 0.1,
-        shadowRadius: 8,
-        elevation: 4,
-        overflow: 'hidden',
+        shadowRadius: 4,
+        elevation: 2,
     },
-    header: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        padding: 16,
-        paddingBottom: 12,
-    },
-    categoryBadge: {
-        backgroundColor: COLORS.primary,
-        paddingHorizontal: 12,
-        paddingVertical: 4,
-        borderRadius: 12,
+    categoryIcon: {
+        marginRight: 4,
     },
     categoryText: {
         color: COLORS.white,
         fontSize: 12,
-        fontWeight: '600',
-    },
-    title: {
-        fontSize: 18,
         fontWeight: '700',
-        color: COLORS.black,
-        paddingHorizontal: 16,
-        marginBottom: 8,
-        lineHeight: 24,
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
     },
-    content: {
-        fontSize: 14,
-        color: COLORS.gray,
-        paddingHorizontal: 16,
-        marginBottom: 12,
-        lineHeight: 20,
-    },
-    meta: {
+    headerRight: {
         flexDirection: 'row',
-        justifyContent: 'space-between',
         alignItems: 'center',
-        paddingHorizontal: 16,
-        paddingBottom: 16,
-    },
-    author: {
-        fontSize: 12,
-        color: COLORS.gray,
-        fontWeight: '500',
     },
     time: {
-        fontSize: 12,
-        color: COLORS.gray,
+        fontSize: 13,
+        color: COLORS.textLight,
+        fontWeight: '500',
+        marginRight: 12,
+    },
+    favoriteButton: {
+        padding: 4,
+    },
+    title: {
+        fontSize: 19,
+        fontWeight: '700',
+        color: COLORS.textPrimary,
+        paddingHorizontal: 20,
+        marginBottom: 10,
+        lineHeight: 26,
+    },
+    content: {
+        fontSize: 15,
+        color: COLORS.textSecondary,
+        paddingHorizontal: 20,
+        marginBottom: 16,
+        lineHeight: 22,
+    },
+    meta: {
+        paddingHorizontal: 20,
+        paddingBottom: 16,
+    },
+    authorContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    author: {
+        fontSize: 13,
+        color: COLORS.textSecondary,
+        fontWeight: '600',
+        marginLeft: 6,
     },
     actionButtons: {
         flexDirection: 'row',
-        justifyContent: 'space-around',
-        paddingVertical: 12,
-        paddingHorizontal: 16,
+        justifyContent: 'space-between',
+        paddingVertical: 16,
+        paddingHorizontal: 20,
         borderTopWidth: 1,
-        borderTopColor: COLORS.lightGray,
-        backgroundColor: COLORS.background,
+        borderTopColor: COLORS.border,
+        backgroundColor: 'rgba(248, 250, 252, 0.8)',
+        gap: 5,
     },
     actionButton: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingVertical: 8,
-        paddingHorizontal: 12,
-        borderRadius: 20,
+        paddingVertical: 10,
+        paddingHorizontal: 16,
+        borderRadius: 25,
         backgroundColor: COLORS.white,
         borderWidth: 1,
         borderColor: COLORS.lightGray,
-        minWidth: 70,
+        minWidth: 80,
         justifyContent: 'center',
-    },
-    actionButtonLiked: {
-        backgroundColor: COLORS.red,
-        borderColor: COLORS.red,
+        shadowColor: COLORS.black,
+        shadowOffset: {
+            width: 0,
+            height: 2,
+        },
+        shadowOpacity: 0.08,
+        shadowRadius: 4,
+        elevation: 2,
     },
     actionText: {
         marginLeft: 6,
-        fontSize: 12,
+        fontSize: 13,
         fontWeight: '600',
-        color: COLORS.gray,
-    },
-    actionTextLiked: {
-        color: COLORS.white,
+        color: COLORS.textSecondary,
     },
 });
 

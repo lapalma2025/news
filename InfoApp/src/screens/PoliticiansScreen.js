@@ -213,7 +213,7 @@ const PoliticiansScreen = () => {
 
     if (loading) {
         return (
-            <SafeAreaView style={styles.container}>
+            <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
                 <View style={styles.loadingContainer}>
                     <Text>Ładowanie wpisów polityków...</Text>
                 </View>
@@ -222,7 +222,7 @@ const PoliticiansScreen = () => {
     }
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
             {/* Używamy gotowej listy — przekaż koniecznie onLike */}
             <PoliticianList
                 posts={posts}

@@ -545,7 +545,7 @@ const NewsScreen = () => {
     );
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
             <FlatList
                 data={filteredNews}
                 renderItem={renderNewsItem}

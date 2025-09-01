@@ -278,13 +278,18 @@ async function geocodePostalCodePL(postalRaw) {
 }
 
 /* ================== Sejm API ================== */
+const SEJM_API_BASE = 'https://sejm-proxy.officejusttalk-75e.workers.dev/sejm';
+
 const API = {
-    MPs: 'https://api.sejm.gov.pl/sejm/term10/MP',
-    MP: (id) => `https://api.sejm.gov.pl/sejm/term10/MP/${id}`,
-    MP_PHOTO_MINI: (id) => `https://api.sejm.gov.pl/sejm/term10/MP/${id}/photo-mini`,
-    PROCEEDINGS: 'https://api.sejm.gov.pl/sejm/term10/proceedings',
-    MP_VOTES_FOR_DAY: (mpId, sitting, ymd) => `https://api.sejm.gov.pl/sejm/term10/MP/${mpId}/votings/${sitting}/${ymd}`,
+    MPs: `${SEJM_API_BASE}/term10/MP`,
+    MP: (id) => `${SEJM_API_BASE}/term10/MP/${id}`,
+    MP_PHOTO_MINI: (id) => `${SEJM_API_BASE}/term10/MP/${id}/photo-mini`,
+    PROCEEDINGS: `${SEJM_API_BASE}/term10/proceedings`,
+    MP_VOTES_FOR_DAY: (mpId, sitting, ymd) =>
+        `${SEJM_API_BASE}/term10/MP/${mpId}/votings/${sitting}/${ymd}`,
 };
+
+
 const sejmVotingUrl = (sitting, votingNumber) =>
     `https://www.sejm.gov.pl/Sejm10.nsf/agent.xsp?symbol=glosowania&NrKadencji=10&NrPosiedzenia=${encodeURIComponent(sitting)}&NrGlosowania=${encodeURIComponent(votingNumber)}`;
 
@@ -747,7 +752,7 @@ const ParlamentScreen = () => {
                         <Ionicons name="mail-open-outline" size={18} color={COLORS.gray} style={styles.inputIcon} />
                         <TextInput
                             style={[styles.textInput, { paddingLeft: 36 }]}
-                            placeholder="Kod pocztowy (np. 57-300 lub 57300)"
+                            placeholder="Kod pocztowy"
                             value={postalCode}
                             onChangeText={setPostalCode}
                             maxLength={7}

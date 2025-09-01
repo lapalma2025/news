@@ -3,19 +3,16 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase, handleSupabaseError, handleSupabaseSuccess } from './supabaseClient';
 import { handleApiError } from './apiHelpers';
 
+const SEJM_API_BASE = 'https://sejm-proxy.officejusttalk-75e.workers.dev/sejm';
+
 class LegislationVotingService {
     constructor() {
         this.CURRENT_TERM = 10;
         this.TABLE_NAME = 'infoapp_legislation_votes';
     }
 
-    /**
-     * Generuje unikalny ID użytkownika dla anonimowych głosów
-     * W prawdziwej aplikacji to będzie prawdziwy user ID
-     */
     async generateUserId() {
         try {
-            // Sprawdź czy już mamy zapisany ID w AsyncStorage
             let userId = await AsyncStorage.getItem('anonymous_user_id');
 
             if (!userId) {
@@ -347,7 +344,7 @@ class LegislationVotingService {
      * @returns {string} URL do PDF
      */
     generatePdfLink(printNumber, term = this.CURRENT_TERM) {
-        return `https://api.sejm.gov.pl/sejm/term${term}/prints/${printNumber}/${printNumber}.pdf`;
+        return `${SEJM_API_BASE}/term${term}/prints/${printNumber}/${printNumber}.pdf`;
     }
 }
 

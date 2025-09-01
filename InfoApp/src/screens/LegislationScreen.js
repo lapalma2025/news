@@ -251,7 +251,7 @@ const LegislationScreen = () => {
 
     if (loading && prints.length === 0) {
         return (
-            <SafeAreaView style={styles.container}>
+            <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
                 <LoadingSpinner text="Ładowanie prac legislacyjnych..." />
             </SafeAreaView>
         );
@@ -259,7 +259,7 @@ const LegislationScreen = () => {
 
     if (error && prints.length === 0) {
         return (
-            <SafeAreaView style={styles.container}>
+            <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
                 <View style={styles.errorContainer}>
                     <Ionicons name="alert-circle-outline" size={64} color={COLORS.red} />
                     <Text style={styles.errorTitle}>Błąd połączenia</Text>
@@ -276,7 +276,7 @@ const LegislationScreen = () => {
     }
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={styles.container} >
             <LinearGradient
                 colors={[COLORS.primary, COLORS.primaryDark]}
                 style={styles.header}

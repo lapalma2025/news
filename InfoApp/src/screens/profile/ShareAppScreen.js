@@ -19,7 +19,7 @@ import { APP_CONFIG } from '../../utils/constants';
 const ShareAppScreen = () => {
     const [sharing, setSharing] = useState(false);
 
-    const shareMessage = `📱 Sprawdź InfoApp! 
+    const shareMessage = `📱 Sprawdź Wiem! 
 
 Najlepsza aplikacja z najnowszymi wiadomościami i komunikatami polityków w Polsce! 
 
@@ -29,7 +29,7 @@ Najlepsza aplikacja z najnowszymi wiadomościami i komunikatami polityków w Pol
 • Komentarze i dyskusje
 • Zapisywanie ulubionych artykułów
 
-#InfoApp #News #Polityka #Polska`;
+#Wiem #News #Polityka #Polska`;
 
     const handleNativeShare = async () => {
         try {
@@ -158,7 +158,7 @@ Najlepsza aplikacja z najnowszymi wiadomościami i komunikatami polityków w Pol
     );
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
             <ScrollView style={styles.scrollView}>
                 {/* Header */}
                 <LinearGradient
@@ -168,7 +168,7 @@ Najlepsza aplikacja z najnowszymi wiadomościami i komunikatami polityków w Pol
                     <Ionicons name="share" size={48} color={COLORS.white} />
                     <Text style={styles.headerTitle}>Podziel się aplikacją</Text>
                     <Text style={styles.headerSubtitle}>
-                        Poleć InfoApp znajomym i rodzinie!
+                        Poleć aplikcję znajomym i rodzinie!
                     </Text>
                 </LinearGradient>
 
@@ -214,7 +214,7 @@ Najlepsza aplikacja z najnowszymi wiadomościami i komunikatami polityków w Pol
 
                 {/* Benefits */}
                 <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Dlaczego warto polecić InfoApp?</Text>
+                    <Text style={styles.sectionTitle}>Dlaczego warto polecić aplikację?</Text>
                     <View style={styles.benefitsContainer}>
                         <View style={styles.benefitItem}>
                             <Ionicons name="newspaper" size={24} color={COLORS.blue} />
@@ -246,7 +246,7 @@ Najlepsza aplikacja z najnowszymi wiadomościami i komunikatami polityków w Pol
                 {/* Footer */}
                 <View style={styles.footer}>
                     <Text style={styles.footerText}>
-                        Dziękujemy za pomoc w rozpowszechnianiu InfoApp! 🙏
+                        Dziękujemy za pomoc w rozpowszechnianiu aplikacji Wiem! 🙏
                     </Text>
                 </View>
             </ScrollView>

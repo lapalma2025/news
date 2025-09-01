@@ -1,24 +1,37 @@
 {
-	"expo": {
-		"name": "InfoApp",
-		"slug": "infoapp",
-		"version": "1.0.0",
-		"platforms": ["ios", "android", "web"],
-		"icon": "./assets/icon.png",
-		"userInterfaceStyle": "light",
-		"splash": {
-			"image": "./assets/splash.png",
-			"resizeMode": "contain",
-			"backgroundColor": "#667eea"
-		},
-		"plugins": [],
-		"android": {
-			"package": "com.yourname.infoapp",
-			"versionCode": 1
-		},
-		"ios": {
-			"bundleIdentifier": "com.yourname.infoapp",
-			"buildNumber": "1.0.0"
-		}
-	}
+  "expo": {
+    "owner": "mzborowski",
+    "name": "Wiem",
+    "slug": "wiem",
+    "version": "1.0.0",
+    "scheme": "wiem",
+    "platforms": [
+      "ios",
+      "android",
+      "web"
+    ],
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#667eea"
+    },
+    "plugins": [
+      "expo-web-browser"
+    ],
+    "android": {
+      "package": "com.yourname.wiem",
+      "versionCode": 1
+    },
+    "ios": {
+      "bundleIdentifier": "com.yourname.wiem",
+      "buildNumber": "1.0.0"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "61f973ef-b9ce-478e-9605-592748c21775"
+      }
+    }
+  }
 }

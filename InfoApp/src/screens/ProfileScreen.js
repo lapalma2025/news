@@ -1,6 +1,7 @@
 // src/screens/ProfileScreen.js - Z prawdziwymi statystykami
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { makeRedirectUri, ResponseType } from 'expo-auth-session';
+import { View, Text, StyleSheet, ScrollView, Platform, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -19,6 +20,9 @@ import AboutAppScreen from './profile/AboutAppScreen';
 import HelpSupportScreen from './profile/HelpSupportScreen';
 import ShareAppScreen from './profile/ShareAppScreen';
 import RateAppScreen from './profile/RateAppScreen';
+import * as WebBrowser from "expo-web-browser";
+
+WebBrowser.maybeCompleteAuthSession();
 
 const ProfileScreen = () => {
     const [user, setUser] = useState(null);
@@ -31,14 +35,24 @@ const ProfileScreen = () => {
     const [loading, setLoading] = useState(true);
     const [activeScreen, setActiveScreen] = useState('main');
     const [signingIn, setSigningIn] = useState(false);
+    const redirectUri = makeRedirectUri({ useProxy: true });
+
+    const expoRedirect = `https://auth.expo.io/@mzborowski/wiem`;
 
     const [request, response, promptAsync] = Google.useAuthRequest({
-        clientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-        scopes: ['profile', 'email'],
-        redirectUri: 'https://ggtljdtdlhbdupjuednj.supabase.co/auth/v1/callback',
+        expoClientId: "443651685443-vgrjqdqlqtch3btggsturp5vsdq03mna.apps.googleusercontent.com",
+        iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+        androidClientId: "1234567890-abc123def456.apps.googleusercontent.com", // 👈 NOWY ID
+        webClientId: "443651685443-vgrjqdqlqtch3btggsturp5vsdq03mna.apps.googleusercontent.com",
+        responseType: ResponseType.IdToken,
+        scopes: ["openid", "profile", "email"],
+        redirectUri: makeRedirectUri({ useProxy: true }),
     });
 
-    // Załaduj dane gdy ekran się focusuje (wraca z innych ekranów)
+    console.log("🔗 redirectUri używane w GoogleAuth:", expoRedirect);
+
+    console.log('redirectUri:', redirectUri);
+
     useFocusEffect(
         React.useCallback(() => {
             if (activeScreen === 'main') {
@@ -48,11 +62,36 @@ const ProfileScreen = () => {
         }, [activeScreen])
     );
 
+    // ---- USEEFFECT DO OBSŁUGI ODPOWIEDZI Z GOOGLE ----
     useEffect(() => {
-        if (response?.type === 'success') {
-            const { authentication } = response;
-            handleGoogleSignIn(authentication);
-        }
+        const login = async () => {
+            if (response?.type === "success") {
+                const idToken = response.params?.id_token;
+
+                if (!idToken) {
+                    Alert.alert("Błąd", "Brak id_token z Google");
+                    return;
+                }
+
+                try {
+                    setLoading(true);
+                    const { data, error } = await supabase.auth.signInWithIdToken({
+                        provider: "google",
+                        token: idToken,
+                    });
+
+                    if (error) throw error;
+                    setUser(data.user);
+                    Alert.alert("✅ Sukces", "Zalogowano przez Google!");
+                } catch (err) {
+                    console.error("Supabase login error:", err);
+                    Alert.alert("❌ Błąd", "Nie udało się zalogować");
+                } finally {
+                    setLoading(false);
+                }
+            }
+        };
+        login();
     }, [response]);
 
     const checkUser = async () => {
@@ -302,69 +341,45 @@ const ProfileScreen = () => {
         setActiveScreen('RateApp');
     };
 
+    // ---- HANDLE LOGIN ----
     const handleLogin = async () => {
-        if (user?.isAnonymous) {
-            try {
-                setSigningIn(true);
+        if (!user?.isAnonymous) {
+            Alert.alert('Zarządzanie kontem', 'Co chcesz zrobić?', [
+                { text: 'Anuluj', style: 'cancel' },
+                { text: 'Wyloguj się', onPress: handleSignOut, style: 'destructive' },
+            ]);
+            return;
+        }
 
-                const { error } = await supabase.auth.signInWithOAuth({
-                    provider: 'google',
-                    options: {
-                        redirectTo: `${window.location.origin}/`,
-                        queryParams: {
-                            access_type: 'offline',
-                            prompt: 'consent',
-                        }
-                    }
-                });
-
-                if (error) throw error;
-
-            } catch (error) {
-                console.error('Google sign in error:', error);
-                Alert.alert('Błąd', 'Nie udało się zalogować przez Google');
-            } finally {
-                setSigningIn(false);
-            }
-        } else {
-            Alert.alert(
-                'Zarządzanie kontem',
-                'Co chcesz zrobić?',
-                [
-                    { text: 'Anuluj', style: 'cancel' },
-                    { text: 'Wyloguj się', onPress: handleSignOut, style: 'destructive' },
-                ]
-            );
+        try {
+            setSigningIn(true);
+            // otwiera okno logowania Google (przez proxy Expo)
+            await promptAsync({ useProxy: true });
+        } catch (e) {
+            console.error('Google sign in error:', e);
+            Alert.alert('Błąd', 'Nie udało się uruchomić logowania Google');
+        } finally {
+            setSigningIn(false);
         }
     };
 
     useEffect(() => {
         checkUser();
 
-        // Nasłuchuj zmian autentykacji
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+        const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
             console.log('Auth state changed:', event, session?.user?.email);
             if (event === 'SIGNED_IN') {
                 Alert.alert('Sukces', 'Pomyślnie zalogowano!');
                 checkUser();
-                window.dispatchEvent(new CustomEvent('userLoggedIn'));
-
-                // DODAJ TO - wymuś odświeżenie innych ekranów
-                setTimeout(() => {
-                    // Reset navigation lub wymuszenie re-render
-                    if (navigation?.reset) {
-                        navigation.reset({
-                            index: 0,
-                            routes: [{ name: 'ProfileTab' }]
-                        });
-                    }
-                }, 1000);
             }
             checkUser();
         });
 
-        return () => subscription?.unsubscribe();
+        return () => {
+            authListener?.subscription.unsubscribe(); // 👈 poprawny cleanup
+        };
     }, []);
+
 
     const handleDataManagement = () => {
         Alert.alert(
@@ -465,34 +480,27 @@ const ProfileScreen = () => {
             },
             {
                 id: 4,
-                title: 'Zarządzanie danymi',
-                icon: 'cloud-download',
-                onPress: handleDataManagement,
-                description: 'Eksportuj lub resetuj dane'
-            },
-            {
-                id: 5,
                 title: 'Podziel się aplikacją',
                 icon: 'share',
                 onPress: handleShare,
                 description: 'Poleć znajomym'
             },
             {
-                id: 6,
+                id: 5,
                 title: 'Oceń aplikację',
                 icon: 'star',
                 onPress: handleRate,
                 description: 'Twoja opinia się liczy'
             },
             {
-                id: 7,
+                id: 6,
                 title: 'Pomoc i wsparcie',
                 icon: 'help-circle',
                 onPress: () => navigateToScreen('HelpSupport'),
                 description: 'Skontaktuj się z nami'
             },
             {
-                id: 8,
+                id: 7,
                 title: 'O aplikacji',
                 icon: 'information-circle',
                 onPress: () => navigateToScreen('AboutApp'),
@@ -603,39 +611,11 @@ const ProfileScreen = () => {
                     <Text style={styles.appVersion}>
                         {APP_CONFIG.NAME} v{APP_CONFIG.VERSION}
                     </Text>
-                    <Text style={styles.footerNote}>
-                        {user?.isAnonymous
-                            ? 'Zaloguj się, aby synchronizować dane między urządzeniami'
-                            : 'Dane są synchronizowane w chmurze'
-                        }
-                    </Text>
                     {user?.createdAt && (
                         <Text style={styles.memberSince}>
                             Użytkownik od: {new Date(user.createdAt).toLocaleDateString('pl-PL')}
                         </Text>
                     )}
-
-                    {/* DEBUG INFO - sprawdza ulubione z obu źródeł */}
-                    <TouchableOpacity
-                        onPress={async () => {
-                            console.log('🔄 Manual favorites check...');
-
-                            const currentUser = await userService.getCurrentUser();
-                            console.log('📱 AsyncStorage favorites:', currentUser?.stats?.favoriteArticles);
-                            console.log('📱 AsyncStorage favorites count:', currentUser?.stats?.favoriteArticles?.length);
-
-                            // Sprawdź również w Supabase
-                            const supabaseFavoriteCount = await loadFavoriteCount(currentUser.id);
-                            console.log('💾 Supabase favorites count:', supabaseFavoriteCount);
-
-                            loadRealStats();
-                        }}
-                        style={{ marginTop: 10, padding: 10, backgroundColor: '#e3f2fd', borderRadius: 5 }}
-                    >
-                        <Text style={{ fontSize: 10, textAlign: 'center', color: '#1976d2' }}>
-                            🔄 Debug: Check Favorites (AsyncStorage + Supabase)
-                        </Text>
-                    </TouchableOpacity>
                 </View>
             </ScrollView>
         );
@@ -666,7 +646,7 @@ const ProfileScreen = () => {
 
     if (loading) {
         return (
-            <SafeAreaView style={styles.container}>
+            <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
                 <View style={styles.loadingContainer}>
                     <Text style={styles.loadingText}>Ładowanie profilu...</Text>
                 </View>
@@ -675,7 +655,7 @@ const ProfileScreen = () => {
     }
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
             {activeScreen !== 'main' && (
                 <View style={styles.navigationHeader}>
                     <TouchableOpacity

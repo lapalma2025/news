@@ -1,7 +1,7 @@
 // src/services/legislationService.js - Serwis do obsługi API Sejmu
 import { handleApiError } from './apiHelpers';
 
-const SEJM_API_BASE = 'https://api.sejm.gov.pl/sejm';
+const SEJM_API_BASE = 'https://sejm-proxy.officejusttalk-75e.workers.dev/sejm';
 const CURRENT_TERM = 10; // Aktualna kadencja Sejmu
 
 // Cache dla poprawy wydajności

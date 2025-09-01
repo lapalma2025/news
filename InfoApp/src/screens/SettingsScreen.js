@@ -178,7 +178,7 @@ const SettingsScreen = () => {
 
     if (loading) {
         return (
-            <SafeAreaView style={styles.container}>
+            <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
                 <View style={styles.loadingContainer}>
                     <Text style={styles.loadingText}>Ładowanie ustawień...</Text>
                 </View>
@@ -187,7 +187,7 @@ const SettingsScreen = () => {
     }
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
             <ScrollView showsVerticalScrollIndicator={false}>
                 <SettingSection title="Powiadomienia">
                     <SettingItem
