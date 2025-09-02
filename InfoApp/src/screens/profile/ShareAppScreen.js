@@ -158,7 +158,7 @@ Najlepsza aplikacja z najnowszymi wiadomościami i komunikatami polityków w Pol
     );
 
     return (
-        <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+        <>
             <ScrollView style={styles.scrollView}>
                 {/* Header */}
                 <LinearGradient
@@ -250,7 +250,7 @@ Najlepsza aplikacja z najnowszymi wiadomościami i komunikatami polityków w Pol
                     </Text>
                 </View>
             </ScrollView>
-        </SafeAreaView>
+        </>
     );
 };
 

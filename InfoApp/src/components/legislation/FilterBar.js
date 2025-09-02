@@ -80,33 +80,41 @@ const FilterBar = ({ filters, onFilterChange }) => {
                     </View>
 
                     <ScrollView style={styles.modalContent}>
-                        {options.map((option) => (
-                            <TouchableOpacity
-                                key={option.value}
-                                style={[
-                                    styles.modalOption,
-                                    selectedValue === option.value && styles.modalOptionSelected
-                                ]}
-                                onPress={() => onSelect(option.value)}
-                            >
-                                <View style={styles.modalOptionContent}>
-                                    <Ionicons
-                                        name={option.icon}
-                                        size={20}
-                                        color={selectedValue === option.value ? COLORS.primary : COLORS.textSecondary}
-                                    />
-                                    <Text style={[
-                                        styles.modalOptionText,
-                                        selectedValue === option.value && styles.modalOptionTextSelected
-                                    ]}>
-                                        {option.label}
-                                    </Text>
-                                </View>
-                                {selectedValue === option.value && (
-                                    <Ionicons name="checkmark" size={20} color={COLORS.primary} />
-                                )}
-                            </TouchableOpacity>
-                        ))}
+                        {options.map((option, idx) => {
+                            const isLast = idx === options.length - 1;
+
+                            return (
+                                <TouchableOpacity
+                                    key={option.value}
+                                    style={[
+                                        styles.modalOption,
+                                        selectedValue === option.value && styles.modalOptionSelected,
+                                        isLast && {
+                                            borderBottomWidth: 0,
+                                            borderBottomColor: 'transparent'
+                                        }
+                                    ]}
+                                    onPress={() => onSelect(option.value)}
+                                >
+                                    <View style={styles.modalOptionContent}>
+                                        <Ionicons
+                                            name={option.icon}
+                                            size={20}
+                                            color={selectedValue === option.value ? COLORS.primary : COLORS.textSecondary}
+                                        />
+                                        <Text style={[
+                                            styles.modalOptionText,
+                                            selectedValue === option.value && styles.modalOptionTextSelected
+                                        ]}>
+                                            {option.label}
+                                        </Text>
+                                    </View>
+                                    {selectedValue === option.value && (
+                                        <Ionicons name="checkmark" size={20} color={COLORS.primary} />
+                                    )}
+                                </TouchableOpacity>
+                            );
+                        })}
                     </ScrollView>
                 </View>
             </View>

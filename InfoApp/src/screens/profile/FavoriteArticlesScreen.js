@@ -397,7 +397,7 @@ const FavoriteArticlesScreen = () => {
     }
 
     return (
-        <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+        <>
             <View style={styles.header}>
                 <Text style={styles.headerTitle}>Polubione artykuły</Text>
                 <Text style={styles.headerSubtitle}>
@@ -434,7 +434,7 @@ const FavoriteArticlesScreen = () => {
                 item={selectedItem}
                 onCommentAdded={handleCommentAdded}
             />
-        </SafeAreaView>
+        </>
     );
 };
 

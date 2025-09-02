@@ -127,7 +127,7 @@ function Tabs() {
       <Tab.Screen
         name="Profil"
         component={ProfileScreen}
-        options={{ headerTitle: 'Mój Profil' }}
+        options={{ headerShown: false }}
       />
     </Tab.Navigator>
   );
@@ -138,7 +138,9 @@ export default function App() {
     <AuthProvider>
       <SafeAreaProvider>
         <NavigationContainer>
-          <StatusBar style="light" backgroundColor={COLORS.primary} translucent={false} />
+          <StatusBar translucent={false}
+            backgroundColor={COLORS.primary}
+            barStyle="light-content" />
           <Tabs />
         </NavigationContainer>
       </SafeAreaProvider>

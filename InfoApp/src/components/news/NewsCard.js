@@ -426,8 +426,7 @@ const NewsCard = ({ news, onPress, onComment, onLike, isLiked = false }) => {
                     {/* Przycisk polubienia */}
                     <TouchableOpacity
                         style={[
-                            styles.actionButton,
-                            liked && { backgroundColor: COLORS.like + '15' }
+                            styles.actionButton
                         ]}
                         onPress={() => {
                             console.log('Like button physical press detected at:', new Date().toISOString());

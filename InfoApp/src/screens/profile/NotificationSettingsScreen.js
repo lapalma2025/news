@@ -282,7 +282,7 @@ const NotificationSettingsScreen = () => {
 
     if (loading) {
         return (
-            <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+            <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
                 <View style={styles.loadingContainer}>
                     <ActivityIndicator size="large" color={COLORS.primary} />
                     <Text style={styles.loadingText}>Ładowanie ustawień...</Text>
@@ -292,7 +292,7 @@ const NotificationSettingsScreen = () => {
     }
 
     return (
-        <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+        <>
             <ScrollView style={styles.scrollView}>
                 {saving && (
                     <View style={styles.savingBanner}>
@@ -300,23 +300,6 @@ const NotificationSettingsScreen = () => {
                         <Text style={styles.savingText}>Zapisywanie ustawień...</Text>
                     </View>
                 )}
-
-                {/* Status użytkownika */}
-                <View style={styles.userStatusContainer}>
-                    <View style={styles.userStatus}>
-                        <Ionicons
-                            name={user?.id ? "cloud-done" : "cloud-offline"}
-                            size={20}
-                            color={user?.id ? COLORS.green : COLORS.orange}
-                        />
-                        <Text style={styles.userStatusText}>
-                            {user?.id
-                                ? 'Ustawienia synchronizowane z chmurą'
-                                : 'Ustawienia zapisane lokalnie'
-                            }
-                        </Text>
-                    </View>
-                </View>
 
                 {/* Powiadomienia o treści */}
                 <View style={styles.section}>
@@ -402,12 +385,6 @@ const NotificationSettingsScreen = () => {
                     />
                 </View>
 
-                {/* Test powiadomień */}
-                <TouchableOpacity style={styles.testButton} onPress={testNotification}>
-                    <Ionicons name="notifications" size={20} color={COLORS.white} />
-                    <Text style={styles.testButtonText}>Testuj powiadomienie</Text>
-                </TouchableOpacity>
-
                 {/* Info */}
                 <View style={styles.infoContainer}>
                     <View style={styles.infoBox}>
@@ -429,14 +406,14 @@ const NotificationSettingsScreen = () => {
                     <Text style={styles.resetButtonText}>Przywróć domyślne</Text>
                 </TouchableOpacity>
             </ScrollView>
-        </SafeAreaView>
+        </>
     );
 };
 
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: COLORS.background,
+        backgroundColor: 'transparent',
     },
     loadingContainer: {
         flex: 1,

@@ -276,7 +276,7 @@ const LegislationScreen = () => {
     }
 
     return (
-        <SafeAreaView style={styles.container} >
+        <>
             <LinearGradient
                 colors={[COLORS.primary, COLORS.primaryDark]}
                 style={styles.header}
@@ -316,7 +316,7 @@ const LegislationScreen = () => {
                 ]}
                 showsVerticalScrollIndicator={false}
             />
-        </SafeAreaView>
+        </>
     );
 };
 
@@ -330,14 +330,10 @@ const styles = StyleSheet.create({
         paddingHorizontal: 20,
         borderBottomLeftRadius: 20,
         borderBottomRightRadius: 20,
-        elevation: 4,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
     },
     headerContent: {
         alignItems: 'center',
+        marginTop: 0,
     },
     headerTitle: {
         fontSize: 24,

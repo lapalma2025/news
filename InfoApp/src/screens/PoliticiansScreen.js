@@ -213,16 +213,16 @@ const PoliticiansScreen = () => {
 
     if (loading) {
         return (
-            <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+            <>
                 <View style={styles.loadingContainer}>
                     <Text>Ładowanie wpisów polityków...</Text>
                 </View>
-            </SafeAreaView>
+            </>
         );
     }
 
     return (
-        <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+        <>
             {/* Używamy gotowej listy — przekaż koniecznie onLike */}
             <PoliticianList
                 posts={posts}
@@ -241,7 +241,7 @@ const PoliticiansScreen = () => {
                 onLikeUpdate={handleLikeUpdateFromModal}
                 onCommentAdded={handleCommentUpdateFromModal}
             />
-        </SafeAreaView>
+        </>
     );
 };
 

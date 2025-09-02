@@ -289,7 +289,7 @@ const RateAppScreen = () => {
 
     if (loading) {
         return (
-            <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+            <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
                 <View style={styles.loadingContainer}>
                     <ActivityIndicator size="large" color={COLORS.primary} />
                     <Text style={styles.loadingText}>Ładowanie...</Text>
@@ -299,8 +299,8 @@ const RateAppScreen = () => {
     }
 
     return (
-        <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-            <ScrollView style={styles.scrollView}>
+        <>
+            <ScrollView style={styles.scrollView} contentInsetAdjustmentBehavior="never" automaticallyAdjustContentInsets={false} >
                 {/* Header */}
                 <LinearGradient
                     colors={[COLORS.primary, COLORS.secondary]}
@@ -308,7 +308,7 @@ const RateAppScreen = () => {
                 >
                     <Ionicons name="star" size={48} color="#FFD700" />
                     <Text style={styles.headerTitle}>
-                        {existingRating ? 'Aktualizuj ocenę' : 'Oceń InfoApp'}
+                        {existingRating ? 'Aktualizuj ocenę' : 'Oceń aplikację'}
                     </Text>
                     <Text style={styles.headerSubtitle}>
                         {existingRating
@@ -442,14 +442,14 @@ const RateAppScreen = () => {
                     </Text>
                 </View>
             </ScrollView>
-        </SafeAreaView>
+        </>
     );
 };
 
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: COLORS.background,
+        backgroundColor: 'transparent',
     },
     loadingContainer: {
         flex: 1,

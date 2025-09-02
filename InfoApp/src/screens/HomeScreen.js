@@ -368,7 +368,7 @@ const HomeScreen = () => {
     }
 
     return (
-        <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+        <>
             <ScrollView
                 style={styles.scrollView}
                 contentInsetAdjustmentBehavior="never"
@@ -476,7 +476,7 @@ const HomeScreen = () => {
                 onCommentAdded={handleCommentAdded}
                 onLikeUpdate={handleLike}
             />
-        </SafeAreaView>
+        </>
     );
 };
 

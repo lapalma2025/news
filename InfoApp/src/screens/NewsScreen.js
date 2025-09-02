@@ -545,7 +545,7 @@ const NewsScreen = () => {
     );
 
     return (
-        <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+        <>
             <FlatList
                 data={filteredNews}
                 renderItem={renderNewsItem}
@@ -576,10 +576,10 @@ const NewsScreen = () => {
                 visible={modalVisible}
                 onClose={closeModal}
                 item={selectedItem}
-                onCommentAdded={handleCommentUpdate}  // KLUCZOWE: obsługa komentarzy
-                onLikeUpdate={handleLikeUpdate}       // KLUCZOWE: obsługa polubień
+                onCommentAdded={handleCommentUpdate}
+                onLikeUpdate={handleLikeUpdate}
             />
-        </SafeAreaView>
+        </>
     );
 };
 
@@ -605,7 +605,7 @@ const styles = StyleSheet.create({
         backgroundColor: COLORS.white,
         borderRadius: 25,
         paddingHorizontal: 16,
-        paddingVertical: 12,
+        paddingVertical: 5,
         marginRight: 12,
         shadowColor: COLORS.cardShadow,
         shadowOffset: { width: 0, height: 2 },

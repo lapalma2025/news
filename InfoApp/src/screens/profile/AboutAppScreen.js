@@ -52,7 +52,7 @@ const AboutAppScreen = () => {
     );
 
     return (
-        <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+        <>
             <ScrollView style={styles.scrollView}>
                 {/* App Logo & Info */}
                 <View style={styles.appHeader}>
@@ -200,7 +200,7 @@ const AboutAppScreen = () => {
                     </Text>
                 </View>
             </ScrollView>
-        </SafeAreaView>
+        </>
     );
 };
 
