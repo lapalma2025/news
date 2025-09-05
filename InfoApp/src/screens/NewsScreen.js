@@ -373,12 +373,21 @@ const NewsScreen = () => {
         setRefreshing(false);
     };
 
+    const clearSearch = async () => {
+        setSearchQuery('');
+        // Po wyczyszczeniu, wczytaj wszystkie newsy
+        await loadData();
+    };
+
+    // Popraw funkcję handleSearch żeby działała jak w HomeScreen:
     const handleSearch = async () => {
+        // Jeśli pole jest puste, wczytaj wszystkie newsy
         if (!searchQuery.trim()) {
-            filterNews();
+            await loadNews();
             return;
         }
 
+        // Jeśli jest tekst, wyszukaj
         const response = await newsService.searchNews(searchQuery);
         if (response.success) {
             setNews(response.data);
@@ -464,30 +473,33 @@ const NewsScreen = () => {
     const renderHeader = () => (
         <View>
             {/* Wyszukiwarka */}
-            <View style={styles.searchContainer}>
-                <View style={styles.searchInputContainer}>
-                    <Ionicons name="search" size={20} color={COLORS.gray} />
-                    <TextInput
-                        style={styles.searchInput}
-                        placeholder="Szukaj newsów..."
-                        value={searchQuery}
-                        onChangeText={setSearchQuery}
-                        onSubmitEditing={handleSearch}
-                        placeholderTextColor={COLORS.gray}
-                    />
-                    {searchQuery.length > 0 && (
-                        <TouchableOpacity
-                            onPress={() => setSearchQuery('')}
-                            style={styles.clearButton}
-                        >
-                            <Ionicons name="close-circle" size={20} color={COLORS.gray} />
-                        </TouchableOpacity>
-                    )}
+            {
+                /*            <View style={styles.searchContainer}>
+                    <View style={styles.searchInputContainer}>
+                        <Ionicons name="search" size={20} color={COLORS.gray} />
+                        <TextInput
+                            style={styles.searchInput}
+                            placeholder="Szukaj newsów..."
+                            value={searchQuery}
+                            onChangeText={setSearchQuery}
+                            onSubmitEditing={handleSearch}
+                            placeholderTextColor={COLORS.gray}
+                        />
+                        {searchQuery.length > 0 && (
+                            <TouchableOpacity
+                                onPress={clearSearch}
+                                style={styles.clearButton}
+                            >
+                                <Ionicons name="close-circle" size={20} color={COLORS.gray} />
+                            </TouchableOpacity>
+                        )}
+                    </View>
+                    <TouchableOpacity style={styles.searchButton} onPress={handleSearch}>
+                        <Ionicons name="search" size={20} color={COLORS.white} />
+                    </TouchableOpacity>
                 </View>
-                <TouchableOpacity style={styles.searchButton} onPress={handleSearch}>
-                    <Ionicons name="search" size={20} color={COLORS.white} />
-                </TouchableOpacity>
-            </View>
+     */
+            }
 
             {/* Filtry kategorii */}
             {renderCategoryFilter()}
@@ -553,6 +565,9 @@ const NewsScreen = () => {
                 ListHeaderComponent={renderHeader}
                 ListEmptyComponent={!loading ? renderEmptyState : null}
                 contentContainerStyle={styles.listContainer}
+                keyboardDismissMode="none"
+                nestedScrollEnabled={false}
+                removeClippedSubviews={false}
                 refreshControl={
                     <RefreshControl
                         refreshing={refreshing}

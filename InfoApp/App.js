@@ -3,6 +3,7 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { StatusBar } from 'expo-status-bar';
+import { View, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -89,7 +90,6 @@ function Tabs() {
       <Tab.Screen
         name="Główna"
         component={HomeScreen}
-        options={{ headerTitle: 'InfoApp' }}
       />
       <Tab.Screen
         name="Newsy"

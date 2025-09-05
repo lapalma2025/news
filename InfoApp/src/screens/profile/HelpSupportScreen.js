@@ -28,7 +28,7 @@ const HelpSupportScreen = () => {
         {
             id: 2,
             question: "Czy mogę komentować artykuły bez rejestracji?",
-            answer: "Tak! Możesz komentować artykuły podając tylko swoje imię lub pseudonim. Nie jest wymagana pełna rejestracja."
+            answer: "Niestety nie. Możesz komentować artykuły tylko po zalogowaniu się na swoje konto."
         },
         {
             id: 3,
@@ -167,7 +167,7 @@ const HelpSupportScreen = () => {
                     <Ionicons name="information-circle" size={24} color={COLORS.blue} />
                     <Text style={helpStyles.infoText}>
                         Odpowiadamy na wszystkie wiadomości w ciągu 24 godzin.
-                        Dziękujemy za pomoc w ulepszaniu aplikacji InfoApp!
+                        Dziękujemy za pomoc w ulepszaniu aplikacji!
                     </Text>
                 </View>
             </ScrollView>

@@ -64,7 +64,7 @@ export const TIMEOUTS = {
 export const APP_CONFIG = {
     NAME: 'Wiem',
     VERSION: '1.0.0',
-    DESCRIPTION: 'Najnowsze newsy, komunikaty polityków i budżet państwa',
+    DESCRIPTION: 'Najnowsze newsy, komunikaty polityków i ustawy',
     WEBSITE: 'https://wiem.app',
     SUPPORT_EMAIL: 'pomoc@wiem.pl',
     PRIVACY_URL: 'https://wiem.pl/privacy',

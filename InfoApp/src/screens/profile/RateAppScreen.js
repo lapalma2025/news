@@ -394,7 +394,7 @@ const RateAppScreen = () => {
                 <View style={styles.section}>
                     <Text style={styles.sectionTitle}>Oceń w sklepie z aplikacjami</Text>
                     <Text style={styles.storeDescription}>
-                        Pomoż innym użytkownikom odkryć InfoApp - zostaw opinię w sklepie!
+                        Pomoż innym użytkownikom odkryć aplikacje - zostaw opinię w sklepie!
                     </Text>
                     <View style={styles.storeButtons}>
                         <TouchableOpacity
@@ -416,7 +416,7 @@ const RateAppScreen = () => {
 
                 {/* Features Reminder */}
                 <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Co oferuje InfoApp?</Text>
+                    <Text style={styles.sectionTitle}>Co oferujemy?</Text>
                     <View style={styles.featuresContainer}>
                         {features.map((feature, index) => (
                             <View key={index} style={styles.featureItem}>
@@ -435,7 +435,7 @@ const RateAppScreen = () => {
                 {/* Footer */}
                 <View style={styles.footer}>
                     <Text style={styles.footerText}>
-                        Dziękujemy za korzystanie z InfoApp! 🙏
+                        Dziękujemy za korzystanie z aplikacji! 🙏
                     </Text>
                     <Text style={styles.footerSubtext}>
                         Twoja opinia pomaga nam tworzyć lepszą aplikację dla wszystkich użytkowników.

@@ -14,6 +14,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS } from '../../styles/colors';
 import { APP_CONFIG, SOCIAL_LINKS } from '../../utils/constants';
 
+const Logo = require('../../../assets/logo-app.png');
+
 const AboutAppScreen = () => {
     const openURL = async (url) => {
         try {
@@ -56,10 +58,7 @@ const AboutAppScreen = () => {
             <ScrollView style={styles.scrollView}>
                 {/* App Logo & Info */}
                 <View style={styles.appHeader}>
-                    <View style={styles.appIconContainer}>
-                        <Ionicons name="newspaper" size={48} color={COLORS.white} />
-                    </View>
-                    <Text style={styles.appName}>{APP_CONFIG.NAME}</Text>
+                    <Image source={Logo} style={styles.appLogo} resizeMode="contain" />
                     <Text style={styles.appDescription}>{APP_CONFIG.DESCRIPTION}</Text>
                     <Text style={styles.appVersion}>Wersja {APP_CONFIG.VERSION}</Text>
                 </View>
@@ -218,6 +217,12 @@ const styles = StyleSheet.create({
         paddingVertical: 40,
         paddingHorizontal: 20,
         marginBottom: 20,
+    },
+    appLogo: {
+        width: 96,
+        height: 96,
+        alignSelf: 'center',
+        marginBottom: 16,
     },
     appIconContainer: {
         width: 80,

@@ -36,8 +36,8 @@ Najlepsza aplikacja z najnowszymi wiadomościami i komunikatami polityków w Pol
             setSharing(true);
             const result = await Share.share({
                 message: shareMessage,
-                url: APP_CONFIG.WEBSITE, // Link do strony aplikacji
-                title: 'InfoApp - Najlepsze newsy z Polski'
+                url: APP_CONFIG.WEBSITE,
+                title: 'Wiem - Najlepsze newsy z Polski'
             });
 
             if (result.action === Share.sharedAction) {
@@ -68,7 +68,7 @@ Najlepsza aplikacja z najnowszymi wiadomościami i komunikatami polityków w Pol
                 url = `https://t.me/share/url?url=${encodeURIComponent(APP_CONFIG.WEBSITE)}&text=${encodedMessage}`;
                 break;
             case 'email':
-                url = `mailto:?subject=${encodeURIComponent('Sprawdź InfoApp!')}&body=${encodedMessage}`;
+                url = `mailto:?subject=${encodeURIComponent('Sprawdź Wiem!')}&body=${encodedMessage}`;
                 break;
             case 'sms':
                 url = `sms:?body=${encodedMessage}`;
@@ -87,7 +87,7 @@ Najlepsza aplikacja z najnowszymi wiadomościami i komunikatami polityków w Pol
             // W prawdziwej aplikacji użyj @react-native-clipboard/clipboard
             Alert.alert(
                 'Skopiowano!',
-                'Tekst został skopiowany do schowka.\n\nW prawdziwej aplikacji użyj biblioteki clipboard.',
+                'Tekst został skopiowany do schowka.',
                 [{ text: 'OK' }]
             );
         } catch (error) {
@@ -246,7 +246,7 @@ Najlepsza aplikacja z najnowszymi wiadomościami i komunikatami polityków w Pol
                 {/* Footer */}
                 <View style={styles.footer}>
                     <Text style={styles.footerText}>
-                        Dziękujemy za pomoc w rozpowszechnianiu aplikacji Wiem! 🙏
+                        Dziękujemy za pomoc w rozpowszechnianiu aplikacji! 🙏
                     </Text>
                 </View>
             </ScrollView>

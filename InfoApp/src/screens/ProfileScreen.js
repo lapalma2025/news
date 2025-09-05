@@ -1,5 +1,6 @@
 // src/screens/ProfileScreen.js - Z prawdziwymi statystykami
 import React, { useState, useEffect } from 'react';
+import * as AuthSession from 'expo-auth-session';
 import { makeRedirectUri, ResponseType } from 'expo-auth-session';
 import { View, Text, StyleSheet, ScrollView, Platform, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -12,6 +13,7 @@ import { APP_CONFIG } from '../utils/constants';
 import { userService } from '../services/userService';
 import { readingHistoryService } from '../services/readingHistoryService'; // DODANE
 import { supabase } from '../services/supabaseClient'; // DODANE dla sprawdzania ulubionych
+import { useGoogleLogin } from '../hooks/useGoogleLogin';
 import NotificationSettingsScreen from './profile/NotificationSettingsScreen';
 import FavoriteArticlesScreen from './profile/FavoriteArticlesScreen';
 import ReadingHistoryScreen from './profile/ReadingHistoryScreen';
@@ -25,6 +27,7 @@ import * as WebBrowser from "expo-web-browser";
 WebBrowser.maybeCompleteAuthSession();
 
 const ProfileScreen = () => {
+    const { request, login } = useGoogleLogin();
     const [user, setUser] = useState(null);
     const [stats, setStats] = useState({ // DODANE - osobny state dla statystyk
         readArticles: 0,
@@ -35,64 +38,29 @@ const ProfileScreen = () => {
     const [loading, setLoading] = useState(true);
     const [activeScreen, setActiveScreen] = useState('main');
     const [signingIn, setSigningIn] = useState(false);
-    const redirectUri = makeRedirectUri({ useProxy: true });
+    WebBrowser.maybeCompleteAuthSession();
+    const GOOGLE_WEB_CLIENT_ID =
+        '443651685443-vgrjqdqlqtch3btggsturp5vsdq03mna.apps.googleusercontent.com';
 
-    const expoRedirect = `https://auth.expo.io/@mzborowski/wiem`;
+    // --- TWARDO: redirect do Expo Proxy (musi zgadzać się z Google Console) ---
+    const REDIRECT_URI = 'https://auth.expo.io/@mzborowski/wiem';
 
-    const [request, response, promptAsync] = Google.useAuthRequest({
-        expoClientId: "443651685443-vgrjqdqlqtch3btggsturp5vsdq03mna.apps.googleusercontent.com",
-        iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-        androidClientId: "1234567890-abc123def456.apps.googleusercontent.com", // 👈 NOWY ID
-        webClientId: "443651685443-vgrjqdqlqtch3btggsturp5vsdq03mna.apps.googleusercontent.com",
-        responseType: ResponseType.IdToken,
-        scopes: ["openid", "profile", "email"],
-        redirectUri: makeRedirectUri({ useProxy: true }),
-    });
+    // Discovery Google (OIDC)
+    const discovery = {
+        authorizationEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth',
+        tokenEndpoint: 'https://oauth2.googleapis.com/token',
+        revocationEndpoint: 'https://oauth2.googleapis.com/revoke',
+    };
 
-    console.log("🔗 redirectUri używane w GoogleAuth:", expoRedirect);
-
-    console.log('redirectUri:', redirectUri);
+    const nonce = Math.random().toString(36).slice(2);
 
     useFocusEffect(
         React.useCallback(() => {
-            if (activeScreen === 'main') {
-                checkUser();
-                loadRealStats();
-            }
-        }, [activeScreen])
+            setActiveScreen('main');
+            checkUser();
+            loadRealStats();
+        }, [])
     );
-
-    // ---- USEEFFECT DO OBSŁUGI ODPOWIEDZI Z GOOGLE ----
-    useEffect(() => {
-        const login = async () => {
-            if (response?.type === "success") {
-                const idToken = response.params?.id_token;
-
-                if (!idToken) {
-                    Alert.alert("Błąd", "Brak id_token z Google");
-                    return;
-                }
-
-                try {
-                    setLoading(true);
-                    const { data, error } = await supabase.auth.signInWithIdToken({
-                        provider: "google",
-                        token: idToken,
-                    });
-
-                    if (error) throw error;
-                    setUser(data.user);
-                    Alert.alert("✅ Sukces", "Zalogowano przez Google!");
-                } catch (err) {
-                    console.error("Supabase login error:", err);
-                    Alert.alert("❌ Błąd", "Nie udało się zalogować");
-                } finally {
-                    setLoading(false);
-                }
-            }
-        };
-        login();
-    }, [response]);
 
     const checkUser = async () => {
         try {
@@ -343,6 +311,9 @@ const ProfileScreen = () => {
 
     // ---- HANDLE LOGIN ----
     const handleLogin = async () => {
+        console.log('🔍 Request object:', request);
+        console.log('🔍 Redirect URI being used:', request?.redirectUri);
+
         if (!user?.isAnonymous) {
             Alert.alert('Zarządzanie kontem', 'Co chcesz zrobić?', [
                 { text: 'Anuluj', style: 'cancel' },
@@ -353,8 +324,11 @@ const ProfileScreen = () => {
 
         try {
             setSigningIn(true);
-            // otwiera okno logowania Google (przez proxy Expo)
-            await promptAsync({ useProxy: true });
+            // ✅ Usuń { useProxy: true } i nie przypisuj do result
+            await promptAsync({
+                useProxy: true,
+                projectNameForProxy: '@mzborowski/wiem',
+            });
         } catch (e) {
             console.error('Google sign in error:', e);
             Alert.alert('Błąd', 'Nie udało się uruchomić logowania Google');
@@ -362,7 +336,6 @@ const ProfileScreen = () => {
             setSigningIn(false);
         }
     };
-
     useEffect(() => {
         checkUser();
 
@@ -549,9 +522,10 @@ const ProfileScreen = () => {
                         {user?.isAnonymous ? (
                             <TouchableOpacity
                                 style={[styles.loginButton, signingIn && styles.loginButtonDisabled]}
-                                onPress={handleLogin}
+                                onPress={login}
+                                disabled={!request}
                                 activeOpacity={0.8}
-                                disabled={signingIn}
+
                             >
                                 {signingIn ? (
                                     <ActivityIndicator size="small" color={COLORS.white} />

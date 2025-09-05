@@ -954,8 +954,8 @@ const styles = StyleSheet.create({
     },
     loginPrompt: {
         alignItems: 'center',
-        paddingVertical: 24,
-        paddingHorizontal: 20,
+        paddingVertical: 2,
+        paddingHorizontal: 2,
     },
     loginPromptTitle: {
         fontSize: 18,

@@ -11,6 +11,7 @@
   "dependencies": {
     "@expo/metro-runtime": "~5.0.4",
     "@react-native-async-storage/async-storage": "2.1.2",
+    "@react-native-masked-view/masked-view": "^0.3.2",
     "@react-navigation/bottom-tabs": "^6.6.1",
     "@react-navigation/native": "^6.1.18",
     "@supabase/supabase-js": "^2.55.0",
@@ -19,6 +20,7 @@
     "expo-crypto": "^14.1.5",
     "expo-linear-gradient": "~14.1.5",
     "expo-modules-core": "^2.5.0",
+    "expo-navigation-bar": "~4.2.8",
     "expo-sharing": "~13.1.5",
     "expo-status-bar": "~2.2.3",
     "expo-store-review": "~8.1.5",
@@ -36,8 +38,7 @@
     "react-native-screens": "~4.11.1",
     "react-native-url-polyfill": "^2.0.0",
     "react-native-web": "^0.20.0",
-    "undefined": "@react-navigation/stack1~\u001b[200~npx",
-    "expo-navigation-bar": "~4.2.8"
+    "undefined": "@react-navigation/stack1~\u001b[200~npx"
   },
   "devDependencies": {
     "@babel/core": "^7.20.0"

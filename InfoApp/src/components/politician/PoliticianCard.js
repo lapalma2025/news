@@ -191,17 +191,6 @@ const PoliticianCard = ({ post, onPress, onLike, onComment }) => {
 
                 {/* Footer z interakcjami */}
                 <View style={styles.footer}>
-                    <View style={styles.engagement}>
-                        <TouchableOpacity
-                            style={styles.engagementButton}
-                            onPress={handleShare}
-                            activeOpacity={0.7}
-                        >
-                            <Ionicons name="share-outline" size={18} color={COLORS.white} />
-                            <Text style={styles.engagementText}>Udostępnij</Text>
-                        </TouchableOpacity>
-                    </View>
-
                     <TouchableOpacity
                         style={[
                             styles.followButton,
@@ -379,6 +368,7 @@ const styles = StyleSheet.create({
         borderRadius: 20,
         borderWidth: 2,
         borderColor: 'transparent',
+        marginLeft: 'auto',
     },
     followButtonActive: {
         backgroundColor: 'rgba(255, 255, 255, 0.2)',
@@ -389,6 +379,7 @@ const styles = StyleSheet.create({
         fontSize: 14,
         fontWeight: '700',
         marginLeft: 4,
+
     },
     followTextActive: {
         color: COLORS.white,

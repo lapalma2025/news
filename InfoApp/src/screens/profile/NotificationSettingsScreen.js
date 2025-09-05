@@ -244,14 +244,6 @@ const NotificationSettingsScreen = () => {
         );
     };
 
-    const testNotification = () => {
-        Alert.alert(
-            '🔔 Test powiadomienia',
-            'To jest przykładowe powiadomienie z aplikacji InfoApp!',
-            [{ text: 'OK' }]
-        );
-    };
-
     const SettingItem = ({ icon, title, description, value, onToggle, iconColor = COLORS.primary, disabled = false }) => (
         <View style={[styles.settingItem, disabled && styles.settingItemDisabled]}>
             <View style={styles.settingLeft}>

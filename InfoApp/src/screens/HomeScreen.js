@@ -1,5 +1,6 @@
 // src/screens/HomeScreen.js - KOMPLETNY Z DZIAŁAJĄCĄ FUNKCJĄ handleLike
 import React, { useState, useEffect } from 'react';
+import { Image } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../services/supabaseClient';
 import { eventBus, EVENTS } from '../utils/eventBus';
@@ -179,14 +180,24 @@ const HomeScreen = () => {
     };
 
     const handleSearch = async () => {
-        if (!searchQuery.trim()) return;
+        setTimeout(async () => {
+            if (!searchQuery.trim()) {
+                await loadData();
+                return;
+            }
 
-        const response = await newsService.searchNews(searchQuery);
-        if (response.success) {
-            setNews(response.data);
-        } else {
-            Alert.alert('Błąd', 'Nie udało się wyszukać newsów');
-        }
+            const response = await newsService.searchNews(searchQuery);
+            if (response.success) {
+                setNews(response.data);
+            } else {
+                Alert.alert('Błąd', 'Nie udało się wyszukać newsów');
+            }
+        }, 100); // 100ms opóźnienia
+    };
+
+    const clearSearch = async () => {
+        setSearchQuery('');
+        await loadData();
     };
 
     const openComments = (item, type = 'news') => {
@@ -382,7 +393,6 @@ const HomeScreen = () => {
                     colors={[COLORS.gradientStart, COLORS.gradientEnd]}
                     style={styles.header}
                 >
-                    <Text style={styles.welcomeText}>Witaj w InfoApp</Text>
                     <Text style={styles.subtitleText}>Bądź na bieżąco z najważniejszymi wydarzeniami</Text>
 
                     {/* DODAJ TO - Badges z liczbami */}
@@ -398,7 +408,6 @@ const HomeScreen = () => {
                             </Text>
                         </View>
                     </View>
-
                     <View style={styles.searchContainer}>
                         <TextInput
                             style={styles.searchInput}
@@ -408,10 +417,22 @@ const HomeScreen = () => {
                             onChangeText={setSearchQuery}
                             onSubmitEditing={handleSearch}
                         />
+
+                        {/* Przycisk X do czyszczenia */}
+                        {searchQuery.length > 0 && (
+                            <TouchableOpacity
+                                style={styles.clearButton}
+                                onPress={clearSearch}
+                            >
+                                <Ionicons name="close-circle" size={20} color={COLORS.gray} />
+                            </TouchableOpacity>
+                        )}
+
                         <TouchableOpacity style={styles.searchButton} onPress={handleSearch}>
                             <Ionicons name="search" size={20} color={COLORS.white} />
                         </TouchableOpacity>
                     </View>
+
                 </LinearGradient>
                 {/* Sekcja najnowszych newsów */}
                 <View style={styles.section}>
@@ -532,6 +553,11 @@ const styles = StyleSheet.create({
         borderRadius: 20,
         padding: 8,
         marginLeft: 10,
+    },
+
+    clearButton: {
+        padding: 5,
+        marginRight: 8,
     },
     headerBadges: {
         flexDirection: 'row',
