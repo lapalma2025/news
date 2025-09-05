@@ -13,7 +13,8 @@ import { APP_CONFIG } from '../utils/constants';
 import { userService } from '../services/userService';
 import { readingHistoryService } from '../services/readingHistoryService'; // DODANE
 import { supabase } from '../services/supabaseClient'; // DODANE dla sprawdzania ulubionych
-import { useGoogleLogin } from '../hooks/useGoogleLogin';
+import { GoogleSignin } from '@react-native-google-signin/google-signin';
+import { useGoogleLoginNative } from '../hooks/useGoogleLoginNative ';
 import NotificationSettingsScreen from './profile/NotificationSettingsScreen';
 import FavoriteArticlesScreen from './profile/FavoriteArticlesScreen';
 import ReadingHistoryScreen from './profile/ReadingHistoryScreen';
@@ -27,7 +28,7 @@ import * as WebBrowser from "expo-web-browser";
 WebBrowser.maybeCompleteAuthSession();
 
 const ProfileScreen = () => {
-    const { request, login } = useGoogleLogin();
+    const { login } = useGoogleLoginNative();
     const [user, setUser] = useState(null);
     const [stats, setStats] = useState({ // DODANE - osobny state dla statystyk
         readArticles: 0,
@@ -161,17 +162,48 @@ const ProfileScreen = () => {
     };
 
     const handleSignOut = async () => {
+        console.log('[SignOut] start');
+
         try {
-            const { error } = await supabase.auth.signOut();
-            if (error) throw error;
+            // 1) Wyloguj z Supabase
+            const { error: sbErr } = await supabase.auth.signOut();
+            if (sbErr) {
+                console.log('[SignOut] supabase error:', sbErr);
+                Alert.alert('Błąd', 'Nie udało się wylogować z Supabase');
+                return;
+            }
+            console.log('[SignOut] supabase signed out');
+
+            // 2) Wyloguj z Google (tu dodajesz właśnie signOut)
+            try {
+                await GoogleSignin.signOut();        // czyści sesję Google na urządzeniu
+                // opcjonalnie, jeśli chcesz też cofnąć zgodę OAuth:
+                // await GoogleSignin.revokeAccess();
+                console.log('[SignOut] google signOut ok');
+            } catch (e) {
+                console.log('[SignOut] google signOut warn:', e?.message || e);
+                // nie przerywaj – samo Supabase wystarczy, ale warto zalogować
+            }
+
+            // 3) Natychmiast wyzeruj UI
+            setUser({
+                isAnonymous: true,
+                displayName: 'Anonim',
+                stats: { readArticles: 0, favoriteArticles: [], comments: 0, likedPosts: 0 },
+            });
+            setStats({ readArticles: 0, favoriteArticles: 0, comments: 0, likedPosts: 0 });
+
+            // 4) (Opcjonalnie) sprawdź, czy sesja faktycznie zniknęła
+            const { data: { session } } = await supabase.auth.getSession();
+            console.log('[SignOut] session after signOut =', session);
 
             Alert.alert('Wylogowano', 'Pomyślnie wylogowano z konta.');
-            checkUser();
         } catch (error) {
-            console.error('Sign out error:', error);
+            console.log('[SignOut] fatal error:', error);
             Alert.alert('Błąd', 'Nie udało się wylogować.');
         }
     };
+
 
     // NOWA FUNKCJA - sprawdza liczbę ulubionych z bazy danych (podobnie jak loadLikedArticles)
     const loadFavoriteCount = async (userId) => {
@@ -309,50 +341,59 @@ const ProfileScreen = () => {
         setActiveScreen('RateApp');
     };
 
-    // ---- HANDLE LOGIN ----
-    const handleLogin = async () => {
-        console.log('🔍 Request object:', request);
-        console.log('🔍 Redirect URI being used:', request?.redirectUri);
 
-        if (!user?.isAnonymous) {
-            Alert.alert('Zarządzanie kontem', 'Co chcesz zrobić?', [
-                { text: 'Anuluj', style: 'cancel' },
-                { text: 'Wyloguj się', onPress: handleSignOut, style: 'destructive' },
-            ]);
-            return;
-        }
-
-        try {
-            setSigningIn(true);
-            // ✅ Usuń { useProxy: true } i nie przypisuj do result
-            await promptAsync({
-                useProxy: true,
-                projectNameForProxy: '@mzborowski/wiem',
-            });
-        } catch (e) {
-            console.error('Google sign in error:', e);
-            Alert.alert('Błąd', 'Nie udało się uruchomić logowania Google');
-        } finally {
-            setSigningIn(false);
-        }
-    };
     useEffect(() => {
-        checkUser();
+        let mounted = true;
 
-        const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
-            console.log('Auth state changed:', event, session?.user?.email);
-            if (event === 'SIGNED_IN') {
-                Alert.alert('Sukces', 'Pomyślnie zalogowano!');
-                checkUser();
+        // pierwszy odczyt sesji po starcie
+        (async () => {
+            try {
+                await checkUser();
+            } catch (e) {
+                console.log('[Auth] checkUser on mount error:', e);
             }
-            checkUser();
-        });
+        })();
+
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(
+            async (event, session) => {
+                console.log('Auth state changed:', event, session?.user?.email);
+                if (!mounted) return;
+
+                switch (event) {
+                    case 'SIGNED_IN': {
+                        Alert.alert('Sukces', 'Pomyślnie zalogowano!');
+                        await checkUser();
+                        break;
+                    }
+                    case 'SIGNED_OUT': {
+                        // natychmiast zresetuj UI — bez czekania na checkUser()
+                        setUser({
+                            isAnonymous: true,
+                            displayName: 'Anonim',
+                            stats: { readArticles: 0, favoriteArticles: [], comments: 0, likedPosts: 0 },
+                        });
+                        setStats({ readArticles: 0, favoriteArticles: 0, comments: 0, likedPosts: 0 });
+                        setLoading(false);
+                        break;
+                    }
+                    case 'USER_UPDATED':
+                    case 'TOKEN_REFRESHED':
+                    case 'INITIAL_SESSION': {
+                        await checkUser();
+                        break;
+                    }
+                    default:
+                        // no-op
+                        break;
+                }
+            }
+        );
 
         return () => {
-            authListener?.subscription.unsubscribe(); // 👈 poprawny cleanup
+            mounted = false;
+            subscription?.unsubscribe(); // cleanup
         };
     }, []);
-
 
     const handleDataManagement = () => {
         Alert.alert(
@@ -523,7 +564,6 @@ const ProfileScreen = () => {
                             <TouchableOpacity
                                 style={[styles.loginButton, signingIn && styles.loginButtonDisabled]}
                                 onPress={login}
-                                disabled={!request}
                                 activeOpacity={0.8}
 
                             >

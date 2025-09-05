@@ -13,7 +13,10 @@
 			"resizeMode": "contain",
 			"backgroundColor": "#ffffff"
 		},
-		"plugins": ["expo-web-browser"],
+		"plugins": [
+			"@react-native-google-signin/google-signin",
+			"expo-web-browser"
+		],
 		"android": {
 			"package": "com.yourname.wiem",
 			"versionCode": 1

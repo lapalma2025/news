@@ -99,6 +99,13 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded, onLikeUpdate }) 
         }
     }, [item, currentUser]);
 
+    useEffect(() => {
+        const { data: sub } = supabase.auth.onAuthStateChange(async () => {
+            await loadCurrentUser();
+        });
+        return () => sub?.subscription?.unsubscribe?.();
+    }, []);
+
     // W CommentModal.js - ZASTĄP problematyczny useEffect tym:
 
     useEffect(() => {
@@ -134,7 +141,7 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded, onLikeUpdate }) 
             console.log('- item.likes_count:', item?.likes_count);
             console.log('- item.comments_count:', item?.comments_count);
 
-            const user = await userService.getCurrentUser();
+            const user = await loadCurrentUser();
             setCurrentUser(user);
 
             // Sprawdź czy użytkownik ma już zapisane imię
@@ -164,22 +171,14 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded, onLikeUpdate }) 
         }
     };
 
-    useEffect(() => {
-        if (visible && item) {
-            loadComments();
-            loadCurrentUser();
-        }
-    }, [visible, item]);
-
-
     const loadCurrentUser = async () => {
-        const user = await authService.getCurrentUser();
-        setCurrentUser(user);
-
-        if (user) {
-            const profile = await authService.getUserProfile();
-            setUserName(profile.displayName);
+        const u = await authService.getCurrentUser().catch(() => null);
+        setCurrentUser(prev => prev ?? u);
+        if (u?.id) {
+            const profile = await authService.getUserProfile().catch(() => null);
+            if (profile?.displayName) setUserName(profile.displayName);
         }
+        return u; // ⬅️ ważne
     };
 
     const handleEditComment = (comment) => {
@@ -617,7 +616,7 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded, onLikeUpdate }) 
                     <ScrollView style={styles.commentsContainer} showsVerticalScrollIndicator={false}>
                         {loading && comments.length === 0 ? (
                             <View style={styles.loadingContainer}>
-                                <Text style={styles.loadingText}>Ładowanie komentarzy...</Text>
+                                <Text style={styles.loadingText}>Ładowanie komentarzy..</Text>
                             </View>
                         ) : comments.length > 0 ? (
                             comments.map((commentItem) => (
@@ -704,7 +703,7 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded, onLikeUpdate }) 
 
                     {/* Input do dodawania komentarzy */}
                     <View style={styles.inputContainer}>
-                        {currentUser && !currentUser.isAnonymous ? (
+                        {Boolean(currentUser?.id) ? (
                             <>
                                 {showNameInput && (
                                     <View style={styles.nameInputContainer}>

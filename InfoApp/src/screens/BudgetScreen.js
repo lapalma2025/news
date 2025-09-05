@@ -753,6 +753,7 @@ const ParlamentScreen = () => {
                         <TextInput
                             style={[styles.textInput, { paddingLeft: 36 }]}
                             placeholder="Kod pocztowy"
+                            placeholderTextColor={COLORS.black}
                             value={postalCode}
                             onChangeText={setPostalCode}
                             maxLength={7}
@@ -774,6 +775,7 @@ const ParlamentScreen = () => {
                         <TextInput
                             style={[styles.textInput, { paddingLeft: 36 }]}
                             placeholder="Imię i/lub nazwisko (np. Kowalski, Jan Kowalski)"
+                            placeholderTextColor={COLORS.black}
                             value={nameQuery}
                             onChangeText={setNameQuery}
                             autoCapitalize="words"
