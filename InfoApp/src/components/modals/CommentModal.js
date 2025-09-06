@@ -172,14 +172,25 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded, onLikeUpdate }) 
     };
 
     const loadCurrentUser = async () => {
-        const u = await authService.getCurrentUser().catch(() => null);
-        setCurrentUser(prev => prev ?? u);
+        let u = await authService.getCurrentUser().catch(() => null);
+
+        if (!u) {
+            // fallback na anonimowego usera
+            u = { id: null, isAnonymous: true, displayName: "Anonim" };
+        }
+
+        setCurrentUser(u);
+
         if (u?.id) {
             const profile = await authService.getUserProfile().catch(() => null);
             if (profile?.displayName) setUserName(profile.displayName);
+        } else {
+            setUserName("Anonim");
         }
-        return u; // ⬅️ ważne
+
+        return u;
     };
+
 
     const handleEditComment = (comment) => {
         setEditingComment(comment);
@@ -198,6 +209,15 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded, onLikeUpdate }) 
             });
 
             if (response.success) {
+                // ✅ DODAJ - zaktualizuj lokalny stan comments
+                setComments(prevComments =>
+                    prevComments.map(comment =>
+                        comment.id === editingComment.id
+                            ? { ...comment, content: editText.trim() }
+                            : comment
+                    )
+                );
+
                 setEditingComment(null);
                 setEditText('');
                 Alert.alert('Sukces', 'Komentarz został zaktualizowany!');
@@ -223,6 +243,13 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded, onLikeUpdate }) 
                         try {
                             const response = await commentService.deleteComment(comment.id);
                             if (response.success) {
+                                // ✅ DODAJ - usuń komentarz z UI
+                                setComments(prevComments =>
+                                    prevComments.filter(c => c.id !== comment.id)
+                                );
+                                // ✅ DODAJ - zaktualizuj licznik
+                                setCommentsCount(prev => Math.max(prev - 1, 0));
+
                                 Alert.alert('Sukces', 'Komentarz został usunięty');
                             } else {
                                 Alert.alert('Błąd', response.error || 'Nie udało się usunąć komentarza');
@@ -368,6 +395,8 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded, onLikeUpdate }) 
         }
     };
 
+    // W CommentModal.js - ZASTĄP setupRealtimeComments tym:
+
     const setupRealtimeComments = () => {
         if (!item) return;
 
@@ -379,28 +408,42 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded, onLikeUpdate }) 
                 item.id,
                 postType,
                 (payload) => {
-                    console.log('🔥 REAL-TIME EVENT RECEIVED:', payload.eventType, payload.new?.id);
-                    if (payload.eventType === 'INSERT') {
-                        const newComment = {
-                            ...payload.new,
-                            likes: 0,
-                            isLiked: false
-                        };
+                    console.log('🔥 REAL-TIME EVENT:', payload.eventType);
 
-                        console.log('➕ Adding real-time comment to UI:', newComment.id);
+                    if (payload.eventType === 'INSERT') {
+                        const incoming = { ...payload.new, isTemp: false };
+
                         setComments(prev => {
-                            console.log('📝 Comments before:', prev.length);
-                            const updated = [newComment, ...prev];
-                            console.log('📝 Comments after:', updated.length);
-                            return updated;
+                            const withoutTemp = prev.filter(
+                                c => !(c.isTemp && c.content === incoming.content && c.author_name === incoming.author_name)
+                            );
+                            // sprawdź czy już istnieje ten komentarz
+                            const already = withoutTemp.some(c => c.id === incoming.id);
+                            return already ? withoutTemp : [incoming, ...withoutTemp];
                         });
+
+                        setCommentsCount(prev => prev + 1);
+                    }
+                    else if (payload.eventType === 'UPDATE') {
+                        // Obsługa edycji komentarza
+                        setComments(prev =>
+                            prev.map(comment =>
+                                comment.id === payload.new.id
+                                    ? { ...comment, content: payload.new.content }
+                                    : comment
+                            )
+                        );
+
+                    } else if (payload.eventType === 'DELETE') {
+                        // Obsługa usunięcia komentarza (is_active = false)
+                        setComments(prev =>
+                            prev.filter(comment => comment.id !== payload.old.id)
+                        );
+                        setCommentsCount(prev => Math.max(prev - 1, 0));
                     }
                 }
             );
             setCommentSubscription(subscription);
-            console.log('✅ Real-time subscription created');
-        } else {
-            console.log('❌ Real-time subscriptions NOT AVAILABLE');
         }
     };
 
@@ -440,14 +483,46 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded, onLikeUpdate }) 
             });
 
             if (commentResponse.success) {
-                setComment(''); // Wyczyść formularz
+                // 1) Dodaj temp od razu (Wysłano)
+                const tempId = `temp-${Date.now()}`;
+                const author = userName.trim();
+                const contentToSend = comment.trim();
+
+                setComments(prev => [{
+                    id: tempId,
+                    author_name: author,
+                    content: contentToSend,
+                    isTemp: true,
+                    created_at: new Date().toISOString(),
+                    likes: 0,
+                    isLiked: false,
+                }, ...prev]);
+
+                setComment(''); // wyczyść input
                 Alert.alert('Sukces', 'Komentarz został dodany!');
+
+                // 2) Mamy już rekord z bazy (bo .insert().select() zwraca wiersz)
+                const real = {
+                    ...commentResponse.data,       // tu masz prawdziwe id z Supabase
+                    isTemp: false,
+                    likes: 0,
+                    isLiked: false,
+                };
+
+                // 3) Po 1 sekundzie: usuń temp i wstaw prawdziwy — wtedy zniknie "Wysłano"
                 setTimeout(() => {
-                    console.log('🔄 Manual refresh comments after 1 second');
-                    loadComments();
+                    setComments(prev => {
+                        // usuń temp dopasowując po treści i autorze
+                        const withoutTemp = prev.filter(
+                            c => !(c.isTemp && c.content === contentToSend && c.author_name === author)
+                        );
+                        // uniknij duplikatu, jeśli realtime już dodał rekord
+                        const already = withoutTemp.some(c => c.id === real.id);
+                        return already ? withoutTemp : [real, ...withoutTemp];
+                    });
                 }, 1000);
-                // Real-time subscription automatycznie zaktualizuje UI
-            } else {
+            }
+            else {
                 Alert.alert('Błąd', 'Nie udało się dodać komentarza');
             }
         } catch (error) {
@@ -639,7 +714,7 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded, onLikeUpdate }) 
                                                 {commentItem.isTemp && (
                                                     <Ionicons name="checkmark-circle" size={14} color={COLORS.green} />
                                                 )}
-                                                {(currentUser && currentUser.id === commentItem.user_id) && !commentItem.isTemp && (
+                                                {currentUser?.id === commentItem.user_id && !commentItem.isTemp && (
                                                     <View style={styles.commentActions}>
                                                         <TouchableOpacity
                                                             onPress={() => handleEditComment(commentItem)}
@@ -662,7 +737,39 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded, onLikeUpdate }) 
                                             ]}>
                                                 {commentItem.content}
                                             </Text>
-
+                                            {editingComment && editingComment.id === commentItem.id ? (
+                                                <View style={styles.editContainer}>
+                                                    <TextInput
+                                                        style={styles.editInput}
+                                                        value={editText}
+                                                        onChangeText={setEditText}
+                                                        multiline
+                                                        maxLength={300}
+                                                        placeholder="Edytuj komentarz..."
+                                                        autoFocus
+                                                    />
+                                                    <View style={styles.editActions}>
+                                                        <TouchableOpacity
+                                                            style={[styles.editButton, styles.cancelButton]}
+                                                            onPress={() => {
+                                                                setEditingComment(null);
+                                                                setEditText('');
+                                                            }}
+                                                        >
+                                                            <Text style={styles.cancelButtonText}>Anuluj</Text>
+                                                        </TouchableOpacity>
+                                                        <TouchableOpacity
+                                                            style={[styles.editButton, styles.saveButton]}
+                                                            onPress={handleUpdateComment}
+                                                        >
+                                                            <Text style={styles.saveButtonText}>Zapisz</Text>
+                                                        </TouchableOpacity>
+                                                    </View>
+                                                </View>
+                                            ) : (
+                                                <Text>
+                                                </Text>
+                                            )}
                                             {/* Polubienia komentarza */}
                                             {!commentItem.isTemp && (
                                                 <View style={styles.commentActions}>
@@ -904,6 +1011,47 @@ const styles = StyleSheet.create({
         backgroundColor: COLORS.lightGray,
         borderLeftWidth: 3,
         borderLeftColor: COLORS.green,
+    },
+    editContainer: {
+        marginTop: 8,
+        marginBottom: 8,
+    },
+    editInput: {
+        backgroundColor: COLORS.lightGray,
+        borderRadius: 8,
+        padding: 12,
+        fontSize: 14,
+        color: COLORS.black,
+        maxHeight: 100,
+        marginBottom: 8,
+        borderWidth: 2,
+        borderColor: COLORS.primary,
+    },
+    editActions: {
+        flexDirection: 'row',
+        justifyContent: 'flex-end',
+        gap: 8,
+    },
+    editButton: {
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 6,
+    },
+    cancelButton: {
+        backgroundColor: COLORS.gray,
+    },
+    saveButton: {
+        backgroundColor: COLORS.primary,
+    },
+    cancelButtonText: {
+        color: COLORS.white,
+        fontSize: 14,
+        fontWeight: '600',
+    },
+    saveButtonText: {
+        color: COLORS.white,
+        fontSize: 14,
+        fontWeight: '600',
     },
     commentHeader: {
         flexDirection: 'row',

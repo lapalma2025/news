@@ -25,6 +25,22 @@ import ShareAppScreen from './profile/ShareAppScreen';
 import RateAppScreen from './profile/RateAppScreen';
 import * as WebBrowser from "expo-web-browser";
 
+/*
+let GoogleSignin = null;
+let useGoogleLoginNative = () => ({
+    login: () => {
+        console.log("Google login mocked in Expo Go");
+    }
+});
+
+try {
+    GoogleSignin = require("@react-native-google-signin/google-signin").GoogleSignin;
+    useGoogleLoginNative = require("../hooks/useGoogleLoginNative").useGoogleLoginNative;
+} catch (e) {
+    console.log("⚠️ RNGoogleSignin niedostępny w Expo Go – mockuję logowanie.");
+}
+*/
+
 WebBrowser.maybeCompleteAuthSession();
 
 const ProfileScreen = () => {
@@ -120,47 +136,6 @@ const ProfileScreen = () => {
         }
     };
 
-    const handleGoogleSignIn = async (authentication) => {
-        if (!authentication?.accessToken) return;
-
-        setSigningIn(true);
-
-        try {
-            const userInfoResponse = await fetch('https://www.googleapis.com/userinfo/v2/me', {
-                headers: { Authorization: `Bearer ${authentication.accessToken}` },
-            });
-
-            const userInfo = await userInfoResponse.json();
-
-            const { data, error } = await supabase.auth.signInWithIdToken({
-                provider: 'google',
-                token: authentication.idToken,
-                access_token: authentication.accessToken,
-            });
-
-            if (error) throw error;
-
-            const { error: updateError } = await supabase.auth.updateUser({
-                data: {
-                    full_name: userInfo.name,
-                    avatar_url: userInfo.picture,
-                    email: userInfo.email,
-                }
-            });
-
-            if (updateError) console.warn('Update user metadata error:', updateError);
-
-            Alert.alert('Sukces', 'Pomyślnie zalogowano przez Google!');
-            checkUser();
-
-        } catch (error) {
-            console.error('Google sign in error:', error);
-            Alert.alert('Błąd', 'Nie udało się zalogować przez Google. Spróbuj ponownie.');
-        } finally {
-            setSigningIn(false);
-        }
-    };
-
     const handleSignOut = async () => {
         console.log('[SignOut] start');
 
@@ -174,15 +149,13 @@ const ProfileScreen = () => {
             }
             console.log('[SignOut] supabase signed out');
 
-            // 2) Wyloguj z Google (tu dodajesz właśnie signOut)
+            // 2) Wyczyść sesję Google + cofnij dostęp (wymusi ponowny wybór konta)
             try {
-                await GoogleSignin.signOut();        // czyści sesję Google na urządzeniu
-                // opcjonalnie, jeśli chcesz też cofnąć zgodę OAuth:
-                // await GoogleSignin.revokeAccess();
-                console.log('[SignOut] google signOut ok');
+                await GoogleSignin.signOut().catch(() => { });
+                await GoogleSignin.revokeAccess().catch(() => { }); // ⬅️ najważniejsze
+                console.log('[SignOut] google revokeAccess ok');
             } catch (e) {
-                console.log('[SignOut] google signOut warn:', e?.message || e);
-                // nie przerywaj – samo Supabase wystarczy, ale warto zalogować
+                console.log('[SignOut] google revokeAccess warn:', e?.message || e);
             }
 
             // 3) Natychmiast wyzeruj UI
@@ -193,7 +166,7 @@ const ProfileScreen = () => {
             });
             setStats({ readArticles: 0, favoriteArticles: 0, comments: 0, likedPosts: 0 });
 
-            // 4) (Opcjonalnie) sprawdź, czy sesja faktycznie zniknęła
+            // 4) (Opcjonalnie) sprawdź sesję
             const { data: { session } } = await supabase.auth.getSession();
             console.log('[SignOut] session after signOut =', session);
 

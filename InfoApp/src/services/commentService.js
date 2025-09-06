@@ -121,27 +121,37 @@ export const commentService = {
     },
 
     // REAL-TIME SUBSCRIPTIONS
-    subscribeToComments(postId, postType, callback) {
-        try {
-            const channel = supabase
-                .channel(`comments_${postId}_${postType}`)
-                .on(
-                    'postgres_changes',
-                    {
-                        event: '*',
-                        schema: 'public',
-                        table: 'infoapp_comments',
-                        filter: `post_id=eq.${postId}`
-                    },
-                    callback
-                )
-                .subscribe();
+    // W commentService.js - ZASTĄP subscribeToComments tym:
 
-            return channel;
-        } catch (error) {
-            console.error('Error subscribing to comments:', error);
-            return null;
-        }
+    subscribeToComments(postId, postType, callback) {
+        const subscription = supabase
+            .channel('comments_changes')
+            .on('postgres_changes',
+                {
+                    event: '*', // Słuchaj wszystkich eventów
+                    schema: 'public',
+                    table: 'infoapp_comments',
+                    filter: `post_id=eq.${postId} AND post_type=eq.${postType}` // Usuń filtr is_active
+                },
+                (payload) => {
+                    // Obsługa soft delete - gdy is_active się zmienia na false
+                    if (payload.eventType === 'UPDATE' && payload.new.is_active === false) {
+                        // Traktuj jako DELETE
+                        callback({
+                            eventType: 'DELETE',
+                            old: payload.old,
+                            new: payload.new
+                        });
+                    }
+                    // Obsługa normalnych eventów dla aktywnych komentarzy
+                    else if (payload.new?.is_active !== false) {
+                        callback(payload);
+                    }
+                }
+            )
+            .subscribe();
+
+        return subscription;
     },
 
     unsubscribeFromComments(subscription) {
@@ -171,13 +181,15 @@ export const commentService = {
         }
     },
 
-    async updateComment(commentId, content) {
+    // W commentService.js - ZASTĄP updateComment tym:
+
+    async updateComment(commentId, updateData) {
         try {
             const { data, error } = await supabase
                 .from('infoapp_comments')
                 .update({
-                    content: content,
-                    updated_at: getCurrentTimestamp()
+                    content: updateData.content,
+                    // NIE używaj updated_at - kolumna nie istnieje!
                 })
                 .eq('id', commentId)
                 .select();
@@ -188,7 +200,6 @@ export const commentService = {
             return handleSupabaseError(error, 'updateComment');
         }
     },
-
     // FUNKCJE MODERACYJNE
     async reportComment(commentId, reason, reporterId) {
         try {
