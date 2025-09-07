@@ -19,7 +19,8 @@
 		],
 		"android": {
 			"package": "com.yourname.wiem",
-			"versionCode": 1
+			"versionCode": 1,
+			"softwareKeyboardLayoutMode": "pan"
 		},
 		"ios": {
 			"bundleIdentifier": "com.yourname.wiem",
