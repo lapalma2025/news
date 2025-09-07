@@ -25,24 +25,33 @@ const NewsCard = ({ news, onPress, onComment, onLike, isLiked = false }) => {
     const [isInitialized, setIsInitialized] = useState(false);
 
     // Reaguj na zmiany w props news
+    // W NewsCard.js
     useEffect(() => {
-        console.log('NewsCard: news props changed', {
+        console.log('NewsCard: props changed', {
             id: news.id,
             likes: news.likes_count,
             comments: news.comments_count,
             isLikedByUser: news.isLikedByUser
         });
 
-        setLikesCount(news.likes_count || 0);
-        setCommentsCount(news.comments_count || 0);
+        // zawsze synchronizuj lokalny stan ze świeżymi propsami
+        setLikesCount(Number(news.likes_count) || 0);
+        setCommentsCount(Number(news.comments_count) || 0);
 
-        // Użyj isLikedByUser z props jeśli dostępne
-        if (news.isLikedByUser !== undefined) {
+        // like z propsów, a jeśli brak – z parametru isLiked
+        if (typeof news.isLikedByUser === 'boolean') {
             setLiked(news.isLikedByUser);
         } else {
-            setLiked(isLiked);
+            setLiked(!!isLiked);
         }
-    }, [news.likes_count, news.comments_count, news.isLikedByUser, isLiked]);
+    }, [
+        news.id,                 // ważne, żeby reagował przy zmianie elementu
+        news.likes_count,
+        news.comments_count,
+        news.isLikedByUser,
+        isLiked
+    ]);
+
 
     // Inicjalizacja komponentu
     useEffect(() => {
@@ -81,50 +90,49 @@ const NewsCard = ({ news, onPress, onComment, onLike, isLiked = false }) => {
         return () => subscription?.unsubscribe();
     };
 
+    // W NewsCard.js
     const initializeCard = async () => {
         try {
             console.log('Initializing NewsCard for article:', news.id);
 
-            // Pobierz użytkownika z retry logic
             let user = await getUserWithRetry();
-            console.log('Current user after retry:', user?.id);
-
             setCurrentUser(user);
 
             if (user) {
-                // Sprawdź status polubienia
-                if (news.isLikedByUser !== undefined) {
-                    console.log('Using like status from props:', news.isLikedByUser);
+                if (typeof news.isLikedByUser === 'boolean') {
                     setLiked(news.isLikedByUser);
                 } else {
-                    console.log('Checking like status in database...');
-                    const response = await newsService.checkIfLiked(news.id, user.id);
-                    if (response.success) {
-                        console.log('Like status from DB:', response.data);
-                        setLiked(response.data);
-                    }
+                    const likeResp = await newsService.checkIfLiked(news.id, user.id);
+                    if (likeResp.success) setLiked(!!likeResp.data);
                 }
 
-                // Sprawdź ulubione
-                console.log('Checking favorite status...');
                 try {
                     const isFav = await userService.isFavorite(news.id);
-                    console.log('Favorite status:', isFav);
-                    setIsFavorite(isFav);
-                } catch (error) {
-                    console.error('Error checking favorite status:', error);
+                    setIsFavorite(!!isFav);
+                } catch {
                     setIsFavorite(false);
                 }
             }
 
-            setIsInitialized(true);
-            console.log('NewsCard initialization completed');
+            // 🔥 KLUCZ: licz komentarze z infoapp_comments, a nie z infoapp_news
+            const { count, error } = await supabase
+                .from('infoapp_comments')
+                .select('id', { count: 'exact', head: true })
+                .eq('post_id', news.id)
+                .eq('post_type', 'news')
+                .eq('is_active', true);
 
+            if (!error) {
+                setCommentsCount(count || 0);
+            }
+
+            setIsInitialized(true);
         } catch (error) {
             console.error('Error initializing card:', error);
             setIsInitialized(true);
         }
     };
+
 
     const getUserWithRetry = async (retries = 3) => {
         for (let i = 0; i < retries; i++) {
@@ -459,7 +467,7 @@ const NewsCard = ({ news, onPress, onComment, onLike, isLiked = false }) => {
                             color={COLORS.comment}
                         />
                         <Text style={[styles.actionText, { color: COLORS.comment }]}>
-                            {commentsCount || 0}
+                            {news.comments_count || 0}
                         </Text>
                     </TouchableOpacity>
 

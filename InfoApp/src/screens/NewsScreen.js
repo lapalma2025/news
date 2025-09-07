@@ -158,30 +158,38 @@ const NewsScreen = () => {
             if (response.success) {
                 console.log('NewsScreen: Loaded', response.data.length, 'news items');
 
-                // POPRAWKA: Pobierz aktualne liczniki z bazy danych
                 const user = await userService.getCurrentUser();
+
                 const newsWithActualData = await Promise.all(
                     response.data.map(async (newsItem) => {
                         try {
-                            // Pobierz aktualne liczniki z bazy
-                            const { data: actualCounts, error: countsError } = await supabase
+                            // ✅ Policz komentarze z tabeli comments
+                            const { count: commentsCount, error: commentsErr } = await supabase
+                                .from('infoapp_comments')
+                                .select('id', { count: 'exact', head: true })
+                                .eq('post_id', newsItem.id)
+                                .eq('post_type', 'news')
+                                .eq('is_active', true);
+
+                            // ✅ Pobierz polubienia z tabeli news
+                            const { data: likesRow } = await supabase
                                 .from('infoapp_news')
-                                .select('likes_count, comments_count')
+                                .select('likes_count')
                                 .eq('id', newsItem.id)
                                 .single();
 
+                            // ✅ Sprawdź czy user polubił
                             let isLikedByUser = false;
                             if (user?.id) {
-                                // Sprawdź czy użytkownik polubił news
-                                const likeResponse = await newsService.checkIfLiked(newsItem.id, user.id);
-                                isLikedByUser = likeResponse.success ? likeResponse.data : false;
+                                const likeResp = await newsService.checkIfLiked(newsItem.id, user.id);
+                                isLikedByUser = likeResp.success ? !!likeResp.data : false;
                             }
 
                             return {
                                 ...newsItem,
-                                likes_count: actualCounts?.likes_count || 0,
-                                comments_count: actualCounts?.comments_count || 0,  // KLUCZOWE
-                                isLikedByUser: isLikedByUser
+                                likes_count: likesRow?.likes_count || 0,
+                                comments_count: commentsErr ? (newsItem.comments_count || 0) : (commentsCount || 0),
+                                isLikedByUser
                             };
                         } catch (error) {
                             console.error('Error loading data for news:', newsItem.id, error);
@@ -208,6 +216,7 @@ const NewsScreen = () => {
             setLoading(false);
         }
     };
+
 
     const handleLike = async (newsId, shouldLike) => {
         console.log('🎯 NewsScreen handleLike - MAIN LOGIC:', newsId, shouldLike);

@@ -230,6 +230,27 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded, onLikeUpdate }) 
         }
     };
 
+    // CommentModal.js
+    const syncCommentsCountWithDB = async () => {
+        try {
+            const postType = item.politician_name ? 'politician_post' : 'news';
+            const { count, error } = await supabase
+                .from('infoapp_comments')
+                .select('id', { count: 'exact', head: true })
+                .eq('post_id', item.id)
+                .eq('post_type', postType)
+                .eq('is_active', true);
+
+            if (!error) {
+                const fresh = count || 0;
+                setCommentsCount(fresh);
+                onCommentAdded?.(item.id, fresh); // 🔔 NewsScreen zaktualizuje listę
+            }
+        } catch (e) {
+            console.log('syncCommentsCountWithDB error', e);
+        }
+    };
+
     const handleDeleteComment = (comment) => {
         Alert.alert(
             'Usuń komentarz',
@@ -241,19 +262,19 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded, onLikeUpdate }) 
                     style: 'destructive',
                     onPress: async () => {
                         try {
-                            const response = await commentService.deleteComment(comment.id);
-                            if (response.success) {
-                                // ✅ DODAJ - usuń komentarz z UI
-                                setComments(prevComments =>
-                                    prevComments.filter(c => c.id !== comment.id)
-                                );
-                                // ✅ DODAJ - zaktualizuj licznik
-                                setCommentsCount(prev => Math.max(prev - 1, 0));
-
-                                Alert.alert('Sukces', 'Komentarz został usunięty');
-                            } else {
-                                Alert.alert('Błąd', response.error || 'Nie udało się usunąć komentarza');
+                            const resp = await commentService.deleteComment(comment.id); // soft-delete
+                            if (!resp.success) {
+                                Alert.alert('Błąd', resp.error || 'Nie udało się usunąć komentarza');
+                                return;
                             }
+
+                            // natychmiast usuń z listy
+                            setComments(prev => prev.filter(c => c.id !== comment.id));
+
+                            // 🔄 policz świeżo w DB i powiadom rodzica
+                            await syncCommentsCountWithDB();
+
+                            Alert.alert('Sukces', 'Komentarz został usunięty');
                         } catch (error) {
                             console.error('Error deleting comment:', error);
                             Alert.alert('Błąd', 'Wystąpił problem z usuwaniem komentarza');
@@ -263,6 +284,7 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded, onLikeUpdate }) 
             ]
         );
     };
+
     // W CommentModal.js - upewnij się że checkIfPostLiked NIE wywołuje onLikeUpdate:
     // W CommentModal.js - ZASTĄP checkIfPostLiked() tym:
     const checkIfPostLiked = async (userId) => {
@@ -425,15 +447,15 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded, onLikeUpdate }) 
                         setCommentsCount(prev => prev + 1);
                     }
                     else if (payload.eventType === 'UPDATE') {
-                        // Obsługa edycji komentarza
-                        setComments(prev =>
-                            prev.map(comment =>
-                                comment.id === payload.new.id
-                                    ? { ...comment, content: payload.new.content }
-                                    : comment
-                            )
-                        );
-
+                        const nowInactive = payload.new?.is_active === false;
+                        if (nowInactive) {
+                            setComments(prev => prev.filter(c => c.id !== payload.new.id));
+                            syncCommentsCountWithDB(); // 👈 świeży count + callback do rodzica
+                        } else {
+                            setComments(prev =>
+                                prev.map(c => c.id === payload.new.id ? { ...c, content: payload.new.content } : c)
+                            );
+                        }
                     } else if (payload.eventType === 'DELETE') {
                         // Obsługa usunięcia komentarza (is_active = false)
                         setComments(prev =>

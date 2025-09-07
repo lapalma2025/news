@@ -42,15 +42,23 @@ export const commentService = {
         }
     },
 
+    // commentService.js
     async deleteComment(commentId) {
         try {
-            const { error } = await supabase
+            const { data, error } = await supabase
                 .from('infoapp_comments')
                 .update({ is_active: false })
-                .eq('id', commentId);
+                .eq('id', commentId)
+                .select('id, is_active'); // 👈 ZWRÓĆ ZMIENIONE WIERSZE
 
             if (error) throw error;
-            return handleSupabaseSuccess(null, 'deleteComment');
+
+            if (!data || data.length === 0) {
+                // nic nie zaktualizowano → RLS zablokował albo zły ID
+                return { success: false, error: 'No row updated (RLS blocked or wrong id).' };
+            }
+
+            return { success: true, data: data[0] };
         } catch (error) {
             return handleSupabaseError(error, 'deleteComment');
         }

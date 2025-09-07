@@ -774,7 +774,7 @@ const ParlamentScreen = () => {
                         <Ionicons name="person-outline" size={18} color={COLORS.gray} style={styles.inputIcon} />
                         <TextInput
                             style={[styles.textInput, { paddingLeft: 36 }]}
-                            placeholder="Imię i/lub nazwisko (np. Kowalski, Jan Kowalski)"
+                            placeholder="Imię i/lub nazwisko"
                             placeholderTextColor={COLORS.black}
                             value={nameQuery}
                             onChangeText={setNameQuery}
