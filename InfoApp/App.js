@@ -15,6 +15,7 @@ import PoliticiansScreen from './src/screens/PoliticiansScreen';
 import LegislationScreen from './src/screens/LegislationScreen';
 import ParlamentScreen from './src/screens/BudgetScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
+import FloatingAudioPlayer from './src/components/common/FloatingAudioPlayer';
 
 import { COLORS } from './src/styles/colors';
 
@@ -142,6 +143,7 @@ export default function App() {
             backgroundColor={COLORS.primary}
             barStyle="light-content" />
           <Tabs />
+          <FloatingAudioPlayer />
         </NavigationContainer>
       </SafeAreaProvider>
     </AuthProvider>
