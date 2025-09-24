@@ -737,7 +737,7 @@ const CommentModal = ({ visible, onClose, item, onCommentAdded, onLikeUpdate }) 
                                                 {commentItem.isTemp && (
                                                     <Ionicons name="checkmark-circle" size={14} color={COLORS.green} />
                                                 )}
-                                                {currentUser?.id === commentItem.user_id && !commentItem.isTemp && (
+                                                {currentUser?.id && commentItem.user_id && currentUser.id === commentItem.user_id && !commentItem.isTemp && (
                                                     <View style={styles.commentActions}>
                                                         <TouchableOpacity
                                                             onPress={() => handleEditComment(commentItem)}
