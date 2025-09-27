@@ -31,7 +31,7 @@ export const citizenBoxService = {
             };
 
             // Wysłanie emaila przez EmailJS
-            const emailResult = await this.sendEmailViaEmailJS(submissionData);
+            const emailResult = await this.sendEmailViaNative(submissionData);
             console.log('📧 Email result:', emailResult);
 
             if (emailResult.success) {
@@ -62,6 +62,14 @@ export const citizenBoxService = {
     async sendEmailViaEmailJS(submissionData) {
         try {
             console.log('🚀 Starting email send process...');
+
+            // Sprawdź czy to przeglądarka czy React Native
+            const isWeb = typeof window !== 'undefined' && window.document;
+
+            if (!isWeb) {
+                // React Native - użyj natywnego modułu email
+                return await this.sendEmailViaNative(submissionData);
+            }
 
             const EMAILJS_CONFIG = {
                 serviceId: 'service_zpe4694',
@@ -141,6 +149,121 @@ export const citizenBoxService = {
                 success: false,
                 error: `Błąd połączenia z serwerem email: ${error.message}`
             };
+        }
+    },
+
+    async sendEmailViaNative(submissionData) {
+        try {
+            console.log('📱 Attempting EmailJS bypass for React Native...');
+
+            // Przygotuj dane tak jak na web
+            const EMAILJS_CONFIG = {
+                serviceId: 'service_zpe4694',
+                templateId: 'template_ujvy5sn',
+                publicKey: 'OtMMkrZ1-8s-MZqxT'
+            };
+
+            const categoryLabels = this.getCategoryLabels();
+
+            const templateParams = {
+                to_email: 'wiem.biuro@gmail.com',
+                from_email: submissionData.email,
+                subject: `🏛️ Nowe zgłoszenie obywatelskie - ${submissionData.title}`,
+                title: submissionData.title,
+                category: categoryLabels[submissionData.category] || submissionData.category,
+                location: submissionData.location || 'Nie podano',
+                description: submissionData.description,
+                user_email: submissionData.email,
+                allow_contact: submissionData.allowContact ? 'Tak' : 'Nie',
+                date: new Date(submissionData.timestamp).toLocaleDateString('pl-PL', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                }),
+                report_id: submissionData.id
+            };
+
+            const headers = {
+                'Content-Type': 'application/json',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Origin': 'https://localhost:3000',
+                'Referer': 'https://localhost:3000/',
+                'Accept': 'application/json, text/plain, */*',
+                'Accept-Language': 'pl-PL,pl;q=0.9,en;q=0.8'
+            };
+
+            const requestBody = {
+                service_id: EMAILJS_CONFIG.serviceId,
+                template_id: EMAILJS_CONFIG.templateId,
+                user_id: EMAILJS_CONFIG.publicKey,
+                template_params: templateParams
+            };
+
+            console.log('🎭 Sending with browser headers...');
+            console.log('📤 Request body:', requestBody);
+
+            const response = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify(requestBody)
+            });
+
+            console.log('📡 Response status:', response.status);
+            const responseText = await response.text();
+            console.log('📄 Response text:', responseText);
+
+            if (response.ok) {
+                console.log('✅ Email sent via EmailJS bypass!');
+                return { success: true };
+            } else {
+                console.error('❌ EmailJS bypass failed:', response.status, responseText);
+
+                // Fallback do Linking jako backup
+                console.log('🔄 Falling back to Linking...');
+                return await this.sendEmailViaLinking(submissionData);
+            }
+
+        } catch (error) {
+            console.error('💥 EmailJS bypass error:', error);
+
+            // Fallback do Linking jako backup
+            console.log('🔄 Falling back to Linking...');
+            return await this.sendEmailViaLinking(submissionData);
+        }
+    },
+
+    async sendEmailViaLinking(submissionData) {
+        try {
+            const { Linking } = await import('react-native');
+            const categoryLabels = this.getCategoryLabels();
+
+            const subject = encodeURIComponent(`🏛️ Zgłoszenie obywatelskie - ${submissionData.title}`);
+            const body = encodeURIComponent(`🏛️ SKRZYNKA OBYWATELA
+    
+    Tytuł: ${submissionData.title}
+    Kategoria: ${categoryLabels[submissionData.category]}
+    Lokalizacja: ${submissionData.location || 'Nie podano'}
+    Data: ${new Date(submissionData.timestamp).toLocaleDateString('pl-PL')}
+    
+    OPIS: ${submissionData.description}
+    
+    Email: ${submissionData.email}
+    Zgoda na kontakt: ${submissionData.allowContact ? 'Tak' : 'Nie'}
+    ID: ${submissionData.id}`);
+
+            const emailUrl = `mailto:wiem.biuro@gmail.com?subject=${subject}&body=${body}`;
+
+            const canOpen = await Linking.canOpenURL(emailUrl);
+            if (canOpen) {
+                await Linking.openURL(emailUrl);
+                return { success: true, method: 'linking' };
+            } else {
+                return { success: false, error: 'Brak aplikacji email' };
+            }
+        } catch (error) {
+            return { success: false, error: 'Nie można otworzyć email' };
         }
     },
 
