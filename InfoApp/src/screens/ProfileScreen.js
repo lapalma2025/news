@@ -18,6 +18,7 @@ import { useGoogleLoginNative } from '../hooks/useGoogleLoginNative ';
 import NotificationSettingsScreen from './profile/NotificationSettingsScreen';
 import FavoriteArticlesScreen from './profile/FavoriteArticlesScreen';
 import ReadingHistoryScreen from './profile/ReadingHistoryScreen';
+import CitizenBoxScreen from './profile/CitizenBoxScreen';
 import DataManagementScreen from './profile/DataManagementScreen';
 import AboutAppScreen from './profile/AboutAppScreen';
 import HelpSupportScreen from './profile/HelpSupportScreen';
@@ -427,6 +428,8 @@ const ProfileScreen = () => {
                 return <FavoriteArticlesScreen />;
             case 'ReadingHistory':
                 return <ReadingHistoryScreen />;
+            case 'CitizenBox':
+                return <CitizenBoxScreen />;
             case 'DataManagement':
                 return <DataManagementScreen />;
             case 'ShareApp':
@@ -467,27 +470,35 @@ const ProfileScreen = () => {
             },
             {
                 id: 4,
+                title: 'Skrzynka obywatela',
+                icon: 'megaphone',
+                onPress: () => navigateToScreen('CitizenBox'),
+                description: 'Zgłoś problem',
+                featured: true
+            },
+            {
+                id: 5,
                 title: 'Podziel się aplikacją',
                 icon: 'share',
                 onPress: handleShare,
                 description: 'Poleć znajomym'
             },
             {
-                id: 5,
+                id: 6,
                 title: 'Oceń aplikację',
                 icon: 'star',
                 onPress: handleRate,
                 description: 'Twoja opinia się liczy'
             },
             {
-                id: 6,
+                id: 7,
                 title: 'Pomoc i wsparcie',
                 icon: 'help-circle',
                 onPress: () => navigateToScreen('HelpSupport'),
                 description: 'Skontaktuj się z nami'
             },
             {
-                id: 7,
+                id: 8,
                 title: 'O aplikacji',
                 icon: 'information-circle',
                 onPress: () => navigateToScreen('AboutApp'),
@@ -498,16 +509,29 @@ const ProfileScreen = () => {
         const renderMenuItem = (item) => (
             <TouchableOpacity
                 key={item.id}
-                style={styles.menuItem}
+                style={[
+                    styles.menuItem,
+                    item.featured && styles.featuredMenuItem
+                ]}
                 onPress={item.onPress}
                 activeOpacity={0.7}
             >
                 <View style={styles.menuItemLeft}>
-                    <View style={styles.iconContainer}>
-                        <Ionicons name={item.icon} size={22} color={COLORS.primary} />
+                    <View style={[
+                        styles.iconContainer,
+                        item.featured && styles.featuredIconContainer
+                    ]}>
+                        <Ionicons
+                            name={item.icon}
+                            size={22}
+                            color={item.featured ? COLORS.white : COLORS.primary}
+                        />
                     </View>
                     <View style={styles.menuItemTextContainer}>
-                        <Text style={styles.menuItemText}>{item.title}</Text>
+                        <Text style={[
+                            styles.menuItemText,
+                            item.featured && styles.featuredMenuItemText
+                        ]}>{item.title}</Text>
                         {item.description && (
                             <Text style={styles.menuItemDescription}>{item.description}</Text>
                         )}
@@ -616,6 +640,8 @@ const ProfileScreen = () => {
                 return 'Ulubione artykuły';
             case 'ReadingHistory':
                 return 'Historia czytania';
+            case 'CitizenBox':
+                return 'Skrzynka obywatela';
             case 'DataManagement':
                 return 'Zarządzanie danymi';
             case 'ShareApp':
@@ -859,6 +885,18 @@ const styles = StyleSheet.create({
         fontSize: 11,
         color: COLORS.textLight,
         textAlign: 'center',
+    },
+    featuredMenuItem: {
+        backgroundColor: COLORS.primary + '10',
+        borderLeftWidth: 4,
+        borderLeftColor: COLORS.primary,
+    },
+    featuredIconContainer: {
+        backgroundColor: COLORS.primary,
+    },
+    featuredMenuItemText: {
+        color: COLORS.primary,
+        fontWeight: '600',
     },
 });
 

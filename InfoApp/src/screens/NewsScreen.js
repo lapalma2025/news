@@ -30,9 +30,9 @@ const { width } = Dimensions.get('window');
 const CATEGORIES = [
     { id: 'all', name: 'Wszystkie', icon: 'apps' },
     { id: 'Polityka', name: 'Polityka', icon: 'people' },
+    { id: 'Społeczeństwo', name: 'Społeczeństwo', icon: 'home' },
     { id: 'Ekonomia', name: 'Ekonomia', icon: 'trending-up' },
     { id: 'Technologia', name: 'Tech', icon: 'phone-portrait' },
-    { id: 'Społeczeństwo', name: 'Społeczeństwo', icon: 'home' },
     { id: 'Kultura', name: 'Kultura', icon: 'library' },
     { id: 'Sport', name: 'Sport', icon: 'football' },
 ];
