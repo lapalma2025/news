@@ -34,6 +34,7 @@ const CitizenBoxScreen = () => {
     const [loading, setLoading] = useState(true);
     const [user, setUser] = useState(null);
     const [reportsHistory, setReportsHistory] = useState([]);
+    const [expandedHistory, setExpandedHistory] = useState(false);
 
     const categories = citizenBoxService.getReportCategories();
 
@@ -152,11 +153,13 @@ const CitizenBoxScreen = () => {
     const renderReportsHistory = () => {
         if (reportsHistory.length === 0) return null;
 
+        const displayedReports = expandedHistory ? reportsHistory : reportsHistory.slice(0, 3);
+
         return (
             <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Twoje ostatnie zgłoszenia</Text>
                 <View style={styles.historyContainer}>
-                    {reportsHistory.slice(0, 3).map((report, index) => (
+                    {displayedReports.map((report) => (
                         <View key={report.id} style={styles.historyItem}>
                             <View style={styles.historyHeader}>
                                 <Text style={styles.historyTitle} numberOfLines={1}>
@@ -176,10 +179,24 @@ const CitizenBoxScreen = () => {
                             </View>
                         </View>
                     ))}
+
                     {reportsHistory.length > 3 && (
-                        <Text style={styles.moreReports}>
-                            i {reportsHistory.length - 3} więcej...
-                        </Text>
+                        <TouchableOpacity
+                            style={styles.expandButton}
+                            onPress={() => setExpandedHistory(!expandedHistory)}
+                        >
+                            <Text style={styles.expandButtonText}>
+                                {expandedHistory
+                                    ? 'Zwiń historię'
+                                    : `Pokaż wszystkie (${reportsHistory.length})`
+                                }
+                            </Text>
+                            <Ionicons
+                                name={expandedHistory ? 'chevron-up' : 'chevron-down'}
+                                size={16}
+                                color={COLORS.primary}
+                            />
+                        </TouchableOpacity>
                     )}
                 </View>
             </View>
@@ -586,6 +603,21 @@ const styles = StyleSheet.create({
         color: COLORS.textSecondary,
         textAlign: 'center',
         lineHeight: 20,
+    },
+    expandButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 12,
+        marginTop: 8,
+        borderTopWidth: StyleSheet.hairlineWidth,
+        borderTopColor: COLORS.border,
+    },
+    expandButtonText: {
+        fontSize: 14,
+        color: COLORS.primary,
+        fontWeight: '600',
+        marginRight: 4,
     },
 });
 
